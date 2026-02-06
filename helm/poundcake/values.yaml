@@ -47,7 +47,6 @@ podAnnotations: {}
 
 podSecurityContext:
   fsGroup: 1000
-  runAsNonRoot: true
   seccompProfile:
     type: RuntimeDefault
 
@@ -56,7 +55,6 @@ securityContext:
   capabilities:
     drop:
       - ALL
-  readOnlyRootFilesystem: true
   runAsNonRoot: true
   runAsUser: 1000
   seccompProfile:
@@ -251,9 +249,6 @@ stackstorm-chart:
 
   # Pod security contexts for all StackStorm pods
   podSecurityContext:
-    fsGroup: 999
-    runAsNonRoot: true
-    runAsUser: 999
     seccompProfile:
       type: RuntimeDefault
 
@@ -262,8 +257,6 @@ stackstorm-chart:
     capabilities:
       drop:
         - ALL
-    runAsNonRoot: true
-    runAsUser: 999
     seccompProfile:
       type: RuntimeDefault
 

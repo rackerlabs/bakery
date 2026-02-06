@@ -23,8 +23,6 @@ spec:
     spec:
       securityContext:
         fsGroup: 999
-        runAsNonRoot: true
-        runAsUser: 999
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -36,6 +34,8 @@ spec:
               - ALL
           runAsNonRoot: true
           runAsUser: 999
+          seccompProfile:
+            type: RuntimeDefault
           seccompProfile:
             type: RuntimeDefault
         image: "{{ .Values.mongodb.image.repository }}:{{ .Values.mongodb.image.tag }}"

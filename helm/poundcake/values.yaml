@@ -32,7 +32,7 @@ replicaCount: 1
 image:
   repository: ghcr.io/aedan/poundcake
   pullPolicy: IfNotPresent
-  tag: "a511030"  # Git SHA tag from build workflow
+  tag: "2b247b3"  # Git SHA tag from build workflow
 
 imagePullSecrets: []
 nameOverride: ""
@@ -47,18 +47,14 @@ podAnnotations: {}
 
 podSecurityContext:
   fsGroup: 1000
-  seccompProfile:
-    type: RuntimeDefault
 
 securityContext:
-  allowPrivilegeEscalation: false
   capabilities:
     drop:
       - ALL
+  readOnlyRootFilesystem: true
   runAsNonRoot: true
   runAsUser: 1000
-  seccompProfile:
-    type: RuntimeDefault
 
 service:
   type: ClusterIP
@@ -72,7 +68,7 @@ ui:
   image:
     repository: ghcr.io/aedan/poundcake-ui
     pullPolicy: IfNotPresent
-    tag: "a511030"  # Git SHA tag from build workflow
+    tag: "2b247b3"  # Git SHA tag from build workflow
   service:
     type: ClusterIP
     port: 80
@@ -246,19 +242,6 @@ stackstorm-chart:
 
   redis:
     enabled: false
-
-  # Pod security contexts for all StackStorm pods
-  podSecurityContext:
-    seccompProfile:
-      type: RuntimeDefault
-
-  securityContext:
-    allowPrivilegeEscalation: false
-    capabilities:
-      drop:
-        - ALL
-    seccompProfile:
-      type: RuntimeDefault
 
   # StackStorm configuration
   st2:

@@ -25,7 +25,7 @@ replicaCount: 1
 image:
   repository: ghcr.io/aedan/poundcake
   pullPolicy: IfNotPresent
-  tag: "2.0.59"  # Release tag
+  tag: "2.0.60"  # Release tag
 
 imagePullSecrets: []
 nameOverride: ""
@@ -61,7 +61,7 @@ ui:
   image:
     repository: ghcr.io/aedan/poundcake-ui
     pullPolicy: IfNotPresent
-    tag: "2.0.59"  # Release tag
+    tag: "2.0.60"  # Release tag
   service:
     type: ClusterIP
     port: 80
@@ -201,8 +201,8 @@ stackstorm:
   # Connection configuration
   # When chart.enabled = true: These are auto-generated from subchart service names (leave empty)
   # When chart.enabled = false: Set these to point to your external StackStorm instance
-  url: ""  # Auto-generated when subchart enabled: http://{{ .Release.Name }}-stackstorm-ha-st2api:9101
-  authUrl: ""  # Auto-generated when subchart enabled: http://{{ .Release.Name }}-stackstorm-ha-st2auth:9100
+  url: ""  # Auto-generated when subchart enabled: http://{{ .Release.Name }}-st2api:9101
+  authUrl: ""  # Auto-generated when subchart enabled: http://{{ .Release.Name }}-st2auth:9100
   verifySsl: false
 
   # API key or auth token (use secrets for production)
@@ -749,7 +749,7 @@ bakery:
   image:
     repository: ghcr.io/aedan/poundcake-bakery
     pullPolicy: IfNotPresent
-    tag: "2.0.59"
+    tag: "2.0.60"
 
   # Service configuration
   service:

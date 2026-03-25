@@ -18,4 +18,7 @@ def test_bakery_db_init_uses_standalone_alembic_paths() -> None:
 
     assert 'Path("/app/bakery/alembic.ini")' in db_init_source
     assert 'Path(__file__).resolve().parent / "alembic.ini"' in db_init_source
-    assert 'alembic_cfg.set_main_option("script_location", str(alembic_ini.parent / "alembic"))' in db_init_source
+    assert (
+        'alembic_cfg.set_main_option("script_location", str(alembic_ini.parent / "alembic"))'
+        in db_init_source
+    )

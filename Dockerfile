@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 COPY requirements.txt /build/requirements.txt
 RUN pip install --no-cache-dir -r /build/requirements.txt
 
-FROM python:3.11-slim AS runtime
+FROM python:3.11-slim AS bakery-runtime
 
 WORKDIR /app
 

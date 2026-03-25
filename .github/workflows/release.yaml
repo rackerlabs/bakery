@@ -110,6 +110,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - id: release_meta
+        run: |
+          echo "chart_version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
@@ -123,5 +127,5 @@ jobs:
 
             ### Helm Chart
             ```bash
-            helm install bakery oci://${{ env.REGISTRY }}/${{ env.PACKAGE_OWNER }}/charts/${{ needs.build-and-push-chart.outputs.chart_name }} --version ${{ github.ref_name }}
+            helm install bakery oci://${{ env.REGISTRY }}/${{ env.PACKAGE_OWNER }}/charts/${{ needs.build-and-push-chart.outputs.chart_name }} --version ${{ steps.release_meta.outputs.chart_version }}
             ```

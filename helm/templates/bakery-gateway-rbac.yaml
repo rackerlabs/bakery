@@ -2,9 +2,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "poundcake.bakeryGatewayManagerName" . }}
+  name: {{ include "bakery.gatewayManagerName" . }}
   labels:
-    {{- include "poundcake.labels" . | nindent 4 }}
+    {{- include "bakery.labels" . | nindent 4 }}
 rules:
 - apiGroups: ["gateway.networking.k8s.io"]
   resources: ["gateways"]
@@ -16,15 +16,15 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "poundcake.bakeryGatewayManagerName" . }}
+  name: {{ include "bakery.gatewayManagerName" . }}
   labels:
-    {{- include "poundcake.labels" . | nindent 4 }}
+    {{- include "bakery.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ include "poundcake.bakeryGatewayManagerName" . }}
+  name: {{ include "bakery.gatewayManagerName" . }}
 subjects:
 - kind: ServiceAccount
-  name: {{ include "poundcake.bakeryServiceAccountName" . }}
+  name: {{ include "bakery.serviceAccountName" . }}
   namespace: {{ .Release.Namespace }}
 {{- end }}

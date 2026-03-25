@@ -9,57 +9,38 @@ requires = ["setuptools>=64.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "poundcake-api"
+name = "bakery"
 dynamic = ["version"]
-description = "FastAPI application for processing Alertmanager webhooks with StackStorm integration"
+description = "Standalone communication integration service for provider-native ticketing and messaging workflows"
 requires-python = ">=3.11"
 dependencies = [
-    "click>=8.1.0",
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.32.0",
-    "sqlalchemy>=2.0.36",
-    "GitPython>=3.1.46",
-    "greenlet>=3.0.3",
-    "alembic>=1.14.0",
-    "pymysql>=1.1.1",
-    "aiomysql>=0.2.0",
-    "cryptography>=44.0.0",
-    "ldap3>=2.9.1",
-    "requests>=2.32.0",
-    "httpx>=0.28.0",
-    "pydantic>=2.10.0",
-    "pydantic-settings>=2.7.0",
-    "python-jose[cryptography]>=3.5.0",
-    "python-json-logger>=3.2.0",
-    "python-multipart>=0.0.18",
-    "python-dateutil>=2.9.0",
-    "PyYAML>=6.0.2",
-    "prometheus-client>=0.21.0",
-    "redis>=5.2.1",
+    "fastapi==0.128.7",
+    "uvicorn[standard]==0.40.0",
+    "sqlalchemy==2.0.46",
+    "greenlet==3.2.4",
+    "alembic==1.18.3",
+    "pymysql==1.1.2",
+    "cryptography==46.0.4",
+    "pydantic==2.12.5",
+    "httpx==0.28.1",
+    "prometheus-client==0.24.1",
+    "structlog==24.4.0",
 ]
-
-[project.scripts]
-poundcake = "cli.main:main"
-poundcake-cli = "cli.main:main"
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
-    "httpx>=0.28.0",
     "black>=24.10.0",
     "ruff>=0.8.0",
     "mypy>=1.13.0",
     "pre-commit>=3.8.0",
-    "types-PyYAML>=6.0.12",
-    "types-requests>=2.32.0",
-    "types-python-dateutil>=2.9.0",
 ]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["api*", "bakery*", "cli*", "shared*"]
+include = ["bakery*", "shared*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "shared.version.__version__"}
@@ -76,52 +57,31 @@ disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
 module = [
-    "api.api.*",
-    "api.main",
-    "api.migrate",
+    "bakery.api.*",
+    "bakery.main",
+    "bakery.models",
 ]
 disallow_untyped_defs = false
+disable_error_code = ["assignment", "arg-type", "call-overload", "return-value", "var-annotated"]
 
 [[tool.mypy.overrides]]
 module = [
-    "api.services.*",
+    "bakery.formatters",
+    "bakery.worker",
+    "bakery.mixer.*",
+    "bakery.alembic.env",
 ]
-# Ignore SQLAlchemy Column assignment issues
-warn_return_any = false
 disallow_untyped_defs = false
-# Disable problematic error codes for SQLAlchemy ORM code
-disable_error_code = ["assignment", "arg-type", "call-overload", "misc", "var-annotated", "dict-item", "type-var", "return-value", "union-attr", "index"]
-
-[[tool.mypy.overrides]]
-module = ["api.core.logging", "api.core.middleware", "api.core.http_client"]
-# Ignore pythonjsonlogger, SQLAlchemy type issues, and httpx client builder annotations
-disallow_untyped_defs = false
-disable_error_code = ["assignment", "no-any-return"]
-
-[[tool.mypy.overrides]]
-module = [
-    "api.api.health",
-    "api.api.routes",
-    "api.api.recipes",
-    "api.api.auth",
-    "api.api.dishes",
-    "api.api.ingredients",
-    "api.api.v1.*",
-    "api.models.models",
-    "api.validation.query_params",
+disable_error_code = [
+    "assignment",
+    "arg-type",
+    "call-overload",
+    "return-value",
+    "var-annotated",
+    "union-attr",
+    "index",
+    "no-any-return",
 ]
-# Ignore SQLAlchemy type issues in API modules
-disable_error_code = ["assignment", "arg-type", "call-overload", "var-annotated", "return-value", "no-any-return", "no-untyped-def", "attr-defined", "index"]
-
-[[tool.mypy.overrides]]
-module = [
-    "kubernetes",
-    "kubernetes.*",
-    "git",
-    "git.*",
-    "api.models.models_simple",
-]
-ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -129,7 +89,6 @@ asyncio_mode = "auto"
 markers = [
     "integration: marks tests as integration tests (require running server and database)",
 ]
-# Skip integration tests by default in CI
 addopts = "-v --strict-markers"
 
 [tool.black]
@@ -138,7 +97,6 @@ target-version = ['py311']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
-  # directories
   \.eggs
   | \.git
   | \.hg
@@ -147,6 +105,5 @@ extend-exclude = '''
   | \.venv
   | build
   | dist
-  | alembic
 )/
 '''

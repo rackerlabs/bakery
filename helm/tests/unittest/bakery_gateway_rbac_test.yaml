@@ -18,7 +18,7 @@ tests:
         documentIndex: 0
       - equal:
           path: metadata.name
-          value: acct4788235-bakery-poundcake-bakery-gateway-manager
+          value: acct4788235-bakery-gateway-manager
         documentIndex: 0
       - equal:
           path: kind
@@ -26,11 +26,15 @@ tests:
         documentIndex: 1
       - equal:
           path: metadata.name
-          value: acct4788235-bakery-poundcake-bakery-gateway-manager
+          value: acct4788235-bakery-gateway-manager
         documentIndex: 1
       - equal:
           path: roleRef.name
-          value: acct4788235-bakery-poundcake-bakery-gateway-manager
+          value: acct4788235-bakery-gateway-manager
+        documentIndex: 1
+      - equal:
+          path: subjects[0].name
+          value: bakery
         documentIndex: 1
       - equal:
           path: subjects[0].namespace

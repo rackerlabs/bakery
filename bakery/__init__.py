@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bakery - PoundCake ticketing system integration service."""
+"""Bakery provider integration service."""
 
 from shared.version import __version__
 

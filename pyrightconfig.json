@@ -1,5 +1,7 @@
 {
   "include": [
-    "api"
+    "bakery",
+    "shared",
+    "tests"
   ]
 }

@@ -2,9 +2,9 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "poundcake.bakeryName" . }}-gateway-listener
+  name: {{ include "bakery.fullname" . }}-gateway-listener
   labels:
-    {{- include "poundcake.labels" . | nindent 4 }}
+    {{- include "bakery.labels" . | nindent 4 }}
     app.kubernetes.io/component: bakery-gateway-listener
   annotations:
     "helm.sh/hook": post-install,post-upgrade
@@ -14,19 +14,19 @@ spec:
   backoffLimit: 3
   template:
     metadata:
-      name: {{ include "poundcake.bakeryName" . }}-gateway-listener
+      name: {{ include "bakery.fullname" . }}-gateway-listener
       labels:
-        {{- include "poundcake.selectorLabels" . | nindent 8 }}
+        {{- include "bakery.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: bakery-gateway-listener
-        {{- include "poundcake.logGroupLabel" . | nindent 8 }}
-        {{- include "poundcake.logRoleWorker" . | nindent 8 }}
+        {{- include "bakery.logGroupLabel" . | nindent 8 }}
+        {{- include "bakery.logRoleWorker" . | nindent 8 }}
     spec:
       restartPolicy: OnFailure
-      serviceAccountName: {{ include "poundcake.bakeryServiceAccountName" . }}
-      {{- include "poundcake.podPlacement" . | nindent 6 }}
+      serviceAccountName: {{ include "bakery.serviceAccountName" . }}
+      {{- include "bakery.podPlacement" . | nindent 6 }}
       containers:
       - name: bakery-gateway-listener
-        image: bitnami/kubectl:latest
+        image: {{ .Values.images.kubectl | quote }}
         imagePullPolicy: IfNotPresent
         command:
         - /bin/bash

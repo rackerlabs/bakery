@@ -4,14 +4,14 @@
 apiVersion: k8s.mariadb.com/v1alpha1
 kind: MariaDB
 metadata:
-  name: {{ include "poundcake.bakeryDbHost" . }}
+  name: {{ include "bakery.dbHost" . }}
   namespace: {{ $mariaDbNamespace }}
   labels:
-    {{- include "poundcake.labels" . | nindent 4 }}
+    {{- include "bakery.labels" . | nindent 4 }}
     app.kubernetes.io/component: bakery-database
 spec:
   rootPasswordSecretKeyRef:
-    name: {{ .Values.mariadbOperator.server.rootPasswordSecret | default (printf "%s-root" (include "poundcake.bakeryDbHost" .)) }}
+    name: {{ .Values.mariadbOperator.server.rootPasswordSecret | default (printf "%s-root" (include "bakery.dbHost" .)) }}
     key: {{ .Values.mariadbOperator.server.rootPasswordSecretKey | default "password" }}
 
   image: {{ .Values.mariadbOperator.server.image.repository }}:{{ .Values.mariadbOperator.server.image.tag }}
@@ -67,13 +67,13 @@ spec:
 ---
 apiVersion: v1
 kind: Secret
-{{- $bakeryRootSecretName := .Values.mariadbOperator.server.rootPasswordSecret | default (printf "%s-root" (include "poundcake.bakeryDbHost" .) ) }}
+{{- $bakeryRootSecretName := .Values.mariadbOperator.server.rootPasswordSecret | default (printf "%s-root" (include "bakery.dbHost" .) ) }}
 {{- $bakeryRootSecret := lookup "v1" "Secret" $mariaDbNamespace $bakeryRootSecretName }}
 metadata:
   name: {{ $bakeryRootSecretName }}
   namespace: {{ $mariaDbNamespace }}
   labels:
-    {{- include "poundcake.labels" . | nindent 4 }}
+    {{- include "bakery.labels" . | nindent 4 }}
     app.kubernetes.io/component: bakery-database
 type: Opaque
 data:
@@ -89,14 +89,14 @@ data:
 apiVersion: k8s.mariadb.com/v1alpha1
 kind: Database
 metadata:
-  name: {{ include "poundcake.bakeryName" . }}-db
+  name: {{ include "bakery.fullname" . }}-db
   namespace: {{ $mariaDbNamespace }}
   labels:
-    {{- include "poundcake.labels" . | nindent 4 }}
+    {{- include "bakery.labels" . | nindent 4 }}
     app.kubernetes.io/component: bakery-database
 spec:
   mariaDbRef:
-    name: {{ include "poundcake.bakeryDbHost" . }}
+    name: {{ include "bakery.dbHost" . }}
   name: {{ .Values.bakery.database.name }}
   characterSet: utf8mb4
   collate: utf8mb4_unicode_ci
@@ -105,26 +105,26 @@ spec:
 apiVersion: k8s.mariadb.com/v1alpha1
 kind: User
 metadata:
-  name: {{ include "poundcake.bakeryName" . }}-user
+  name: {{ include "bakery.fullname" . }}-user
   namespace: {{ $mariaDbNamespace }}
   labels:
-    {{- include "poundcake.labels" . | nindent 4 }}
+    {{- include "bakery.labels" . | nindent 4 }}
     app.kubernetes.io/component: bakery-database
 spec:
   mariaDbRef:
-    name: {{ include "poundcake.bakeryDbHost" . }}
+    name: {{ include "bakery.dbHost" . }}
   name: {{ .Values.bakery.database.user.name }}
   passwordSecretKeyRef:
-    name: {{ .Values.bakery.database.user.passwordSecret | default (include "poundcake.bakeryDbSecretName" .) }}
-    key: {{ include "poundcake.bakeryDbSecretKey" . }}
+    name: {{ .Values.bakery.database.user.passwordSecret | default (include "bakery.dbSecretName" .) }}
+    key: {{ include "bakery.dbSecretKey" . }}
   maxUserConnections: {{ .Values.bakery.database.user.maxUserConnections }}
   host: "%"
 
 ---
 apiVersion: v1
 kind: Secret
-{{- $bakeryUserSecretName := .Values.bakery.database.user.passwordSecret | default (include "poundcake.bakeryDbSecretName" .) }}
-{{- $bakeryUserSecretKey := include "poundcake.bakeryDbSecretKey" . }}
+{{- $bakeryUserSecretName := .Values.bakery.database.user.passwordSecret | default (include "bakery.dbSecretName" .) }}
+{{- $bakeryUserSecretKey := include "bakery.dbSecretKey" . }}
 {{- $bakeryUserSecret := lookup "v1" "Secret" $mariaDbNamespace $bakeryUserSecretName }}
 {{- $bakeryUserPasswordB64 := "" }}
 {{- if and $bakeryUserSecret (hasKey $bakeryUserSecret.data $bakeryUserSecretKey) }}
@@ -138,7 +138,7 @@ metadata:
   name: {{ $bakeryUserSecretName }}
   namespace: {{ $mariaDbNamespace }}
   labels:
-    {{- include "poundcake.labels" . | nindent 4 }}
+    {{- include "bakery.labels" . | nindent 4 }}
     app.kubernetes.io/component: bakery-database
 type: Opaque
 data:
@@ -152,7 +152,7 @@ metadata:
   name: {{ $bakeryUserSecretName }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "poundcake.labels" . | nindent 4 }}
+    {{- include "bakery.labels" . | nindent 4 }}
     app.kubernetes.io/component: bakery-database
 type: Opaque
 data:
@@ -163,14 +163,14 @@ data:
 apiVersion: k8s.mariadb.com/v1alpha1
 kind: Grant
 metadata:
-  name: {{ include "poundcake.bakeryName" . }}-grant
+  name: {{ include "bakery.fullname" . }}-grant
   namespace: {{ $mariaDbNamespace }}
   labels:
-    {{- include "poundcake.labels" . | nindent 4 }}
+    {{- include "bakery.labels" . | nindent 4 }}
     app.kubernetes.io/component: bakery-database
 spec:
   mariaDbRef:
-    name: {{ include "poundcake.bakeryDbHost" . }}
+    name: {{ include "bakery.dbHost" . }}
   privileges:
     - "ALL PRIVILEGES"
   database: {{ .Values.bakery.database.name }}

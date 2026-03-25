@@ -1,4 +1,10 @@
 {{- if .Values.bakery.enabled }}
+{{- if not .Values.bakery.database.createServer }}
+{{- fail "bakery.database.createServer=false is not supported. Bakery requires an operator-managed MariaDB server." -}}
+{{- end }}
+{{- if not .Values.mariadbOperator.enabled }}
+{{- fail "bakery.database.createServer=true requires mariadbOperator.enabled=true" -}}
+{{- end }}
 {{- if or .Values.bakery.rackspaceCore.url .Values.bakery.rackspaceCore.username .Values.bakery.rackspaceCore.password }}
 {{- fail "Rackspace Core direct values are disabled. Use bakery.rackspaceCore.existingSecret and install-bakery.sh secret provisioning." -}}
 {{- end }}
@@ -22,9 +28,6 @@
 {{- end }}
 {{- if or .Values.bakery.auth.hmac.activeKeyId .Values.bakery.auth.hmac.activeKey .Values.bakery.auth.hmac.nextKeyId .Values.bakery.auth.hmac.nextKey }}
 {{- fail "Bakery auth direct values are disabled. Use bakery.auth.existingSecret and install-bakery.sh secret provisioning." -}}
-{{- end }}
-{{- if or .Values.bakery.client.auth.keyId .Values.bakery.client.auth.key }}
-{{- fail "Bakery client auth direct values are disabled. Use bakery.client.auth.existingSecret and install-bakery.sh secret provisioning." -}}
 {{- end }}
 {{- $activeProvider := (.Values.bakery.config.activeProvider | default "rackspace_core") -}}
 {{- if and (eq $activeProvider "rackspace_core") (not .Values.bakery.rackspaceCore.existingSecret) }}
@@ -51,6 +54,15 @@
 {{- if .Values.bakery.gateway.enabled }}
 {{- $bakeryGatewayProtocol := upper (default "HTTPS" .Values.bakery.gateway.listener.protocol) -}}
 {{- $allowInsecureBakeryHttp := .Values.bakery.gateway.allowInsecureHttp | default false -}}
+{{- if not .Values.bakery.gateway.gatewayName }}
+{{- fail "bakery.gateway.gatewayName is required when bakery.gateway.enabled=true." -}}
+{{- end }}
+{{- if not .Values.bakery.gateway.listener.name }}
+{{- fail "bakery.gateway.listener.name is required when bakery.gateway.enabled=true." -}}
+{{- end }}
+{{- if and (eq $bakeryGatewayProtocol "HTTPS") (not .Values.bakery.gateway.listener.tlsSecretName) }}
+{{- fail "bakery.gateway.listener.tlsSecretName is required when bakery.gateway.listener.protocol=HTTPS." -}}
+{{- end }}
 {{- if and (eq $bakeryGatewayProtocol "HTTP") (not $allowInsecureBakeryHttp) }}
 {{- fail "bakery.gateway.listener.protocol=HTTP is not allowed by default. Use HTTPS for external Bakery traffic, or set bakery.gateway.allowInsecureHttp=true only for isolated non-production environments." -}}
 {{- end }}

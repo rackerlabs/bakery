@@ -1,10 +1,10 @@
-"""Shared version helpers for PoundCake services."""
+"""Shared version helpers for Bakery services."""
 
 from __future__ import annotations
 
 import os
 
-__version__ = "2.0.167"
+__version__ = "0.1.0"
 
 
 def resolve_version(*env_vars: str) -> str:

@@ -37,22 +37,25 @@ def _load_app(monkeypatch):
     return importlib.import_module("bakery.main").app
 
 
-def test_bakery_openapi_exposes_communications_only(monkeypatch) -> None:
+def test_bakery_openapi_exposes_communications_and_tickets(monkeypatch) -> None:
     app = _load_app(monkeypatch)
     openapi = app.openapi()
     paths = set(openapi.get("paths", {}))
     tags = {tag["name"] for tag in openapi.get("tags", [])}
 
     assert "/api/v1/communications" in paths
-    assert not any(path.startswith("/api/v1/tickets") for path in paths)
+    assert "/api/v1/tickets" in paths
+    assert any(path.startswith("/api/v1/tickets") for path in paths)
     assert "communications" in tags
-    assert "tickets" not in tags
+    assert "tickets" in tags
 
 
-def test_legacy_ticket_routes_return_404(monkeypatch) -> None:
+def test_root_endpoint_reports_standalone_service(monkeypatch) -> None:
     app = _load_app(monkeypatch)
     client = TestClient(app)
 
-    response = client.post("/api/v1/tickets")
+    response = client.get("/")
 
-    assert response.status_code == 404
+    assert response.status_code == 200
+    assert response.json()["service"] == "Bakery"
+    assert response.json()["description"] == "Standalone communication integration service"

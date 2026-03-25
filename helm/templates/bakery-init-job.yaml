@@ -1,16 +1,10 @@
-{{- if and .Values.bakery.enabled (not .Values.poundcake.enabled) }}
-{{- if not .Values.bakery.database.createServer }}
-{{- fail "bakery.database.createServer=false is not supported. Bakery requires an operator-managed MariaDB server." }}
-{{- end }}
-{{- if not .Values.mariadbOperator.enabled }}
-{{- fail "bakery.database.createServer=true requires mariadbOperator.enabled=true" }}
-{{- end }}
+{{- if .Values.bakery.enabled }}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "poundcake.bakeryName" . }}-db-init
+  name: {{ include "bakery.fullname" . }}-db-init
   labels:
-    {{- include "poundcake.labels" . | nindent 4 }}
+    {{- include "bakery.labels" . | nindent 4 }}
     app.kubernetes.io/component: bakery-db-init
 spec:
   backoffLimit: 3
@@ -18,36 +12,24 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "poundcake.selectorLabels" . | nindent 8 }}
+        {{- include "bakery.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: bakery-db-init
-        {{- include "poundcake.logGroupLabel" . | nindent 8 }}
-        {{- include "poundcake.logRoleWorker" . | nindent 8 }}
+        {{- include "bakery.logGroupLabel" . | nindent 8 }}
+        {{- include "bakery.logRoleWorker" . | nindent 8 }}
     spec:
-      {{- include "poundcake.poundcakePullSecrets" . | nindent 6 }}
-      serviceAccountName: {{ include "poundcake.bakeryServiceAccountName" . }}
+      {{- include "bakery.pullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "bakery.serviceAccountName" . }}
       restartPolicy: OnFailure
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      {{- include "poundcake.podPlacement" . | nindent 6 }}
+      {{- include "bakery.podPlacement" . | nindent 6 }}
       initContainers:
-        - name: wait-for-db
-          image: {{ .Values.images.busybox | quote }}
-          securityContext:
-            {{- toYaml .Values.utilitySecurityContext | nindent 12 }}
-          command:
-            - sh
-            - -c
-            - |
-              until nc -z -v -w30 {{ include "poundcake.bakeryDbHost" . }} 3306; do
-                echo "Waiting for MariaDB..."
-                sleep 5
-              done
-              echo "MariaDB is ready"
+        {{- include "bakery.waitForDbInitContainer" . | nindent 8 }}
       containers:
         - name: db-init
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          image: {{ include "poundcake.bakeryImageRef" . | quote }}
+          image: {{ include "bakery.imageRef" . | quote }}
           imagePullPolicy: {{ .Values.bakery.image.pullPolicy }}
           command:
             - python
@@ -58,8 +40,10 @@ spec:
               value: {{ .Values.bakery.config.environment | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.bakery.config.logLevel | quote }}
+            - name: BAKERY_APP_VERSION
+              value: {{ include "bakery.imageVersion" . | quote }}
             - name: DATABASE_HOST
-              value: {{ include "poundcake.bakeryDbHost" . }}
+              value: {{ include "bakery.dbHost" . }}
             - name: DATABASE_PORT
               value: "3306"
             - name: DATABASE_NAME
@@ -69,8 +53,8 @@ spec:
             - name: DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "poundcake.bakeryDbSecretName" . }}
-                  key: {{ include "poundcake.bakeryDbSecretKey" . }}
+                  name: {{ include "bakery.dbSecretName" . }}
+                  key: {{ include "bakery.dbSecretKey" . }}
           resources:
             {{- toYaml .Values.bakery.dbInit.resources | nindent 12 }}
           volumeMounts:

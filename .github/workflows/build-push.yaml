@@ -9,8 +9,7 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: read
@@ -23,129 +22,48 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   PACKAGE_OWNER: ${{ vars.GHCR_OWNER || github.repository_owner }}
-  REPO_NAME: ${{ vars.GHCR_REPO_NAME || github.event.repository.name }}
   IMAGE_NAME: ${{ format('{0}/{1}', vars.GHCR_OWNER || github.repository_owner, vars.GHCR_REPO_NAME || github.event.repository.name) }}
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Container Registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN || secrets.CR_PAT }}
 
-      - name: Extract metadata for Docker
-        id: meta
+      - id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
-            type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          target: api-runtime
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=poundcake-api
-          cache-to: type=gha,mode=max,scope=poundcake-api
-          platforms: linux/amd64
-
-      - name: Extract metadata for UI Docker
-        id: meta-ui
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-ui
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push UI Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./ui/Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta-ui.outputs.tags }}
-          labels: ${{ steps.meta-ui.outputs.labels }}
-          cache-from: type=gha,scope=poundcake-ui
-          cache-to: type=gha,mode=max,scope=poundcake-ui
-          platforms: linux/amd64
-
-      - name: Make UI Docker image public
-        if: github.event_name != 'pull_request'
-        run: |
-          curl -X PATCH \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/orgs/${{ env.PACKAGE_OWNER }}/packages/container/${{ env.REPO_NAME }}-ui \
-            -d '{"visibility":"public"}' || echo "Package may already be public or API call failed (non-fatal)"
-
-      - name: Make Docker image public
-        if: github.event_name != 'pull_request'
-        run: |
-          curl -X PATCH \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/orgs/${{ env.PACKAGE_OWNER }}/packages/container/${{ env.REPO_NAME }} \
-            -d '{"visibility":"public"}' || echo "Package may already be public or API call failed (non-fatal)"
-
-      - name: Extract metadata for Bakery Docker
-        id: meta-bakery
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-bakery
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push Bakery Docker image
-        uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v6
         with:
           context: .
           target: bakery-runtime
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta-bakery.outputs.tags }}
-          labels: ${{ steps.meta-bakery.outputs.labels }}
-          cache-from: type=gha,scope=poundcake-bakery
-          cache-to: type=gha,mode=max,scope=poundcake-bakery
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=bakery
+          cache-to: type=gha,mode=max,scope=bakery
           platforms: linux/amd64
 
-      - name: Make Bakery Docker image public
-        if: github.event_name != 'pull_request'
-        run: |
+      - run: |
           curl -X PATCH \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/orgs/${{ env.PACKAGE_OWNER }}/packages/container/${{ env.REPO_NAME }}-bakery \
+            https://api.github.com/orgs/${{ env.PACKAGE_OWNER }}/packages/container/${{ github.event.repository.name }} \
             -d '{"visibility":"public"}' || echo "Package may already be public or API call failed (non-fatal)"

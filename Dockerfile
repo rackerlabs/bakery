@@ -1,14 +1,4 @@
-#  ___                        _  ____      _
-# |  _ \ ___  _   _ _ __   __| |/ ___|__ _| | _____
-# | |_) / _ \| | | | '_ \ / _` | |   / _` | |/ / _ \
-# |  __/ (_) | |_| | | | | (_| | |__| (_| |   <  __/
-# |_|   \___/ \__,_|_| |_|\__,_|\____\__,_|_|\_\___|
-#
-
-# ============================================================================
-# Stage 1: Shared Python builder base
-# ============================================================================
-FROM python:3.11-slim AS python-builder-base
+FROM python:3.11-slim AS builder
 
 WORKDIR /build
 
@@ -22,66 +12,24 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# API dependency set
-FROM python-builder-base AS api-deps
 COPY requirements.txt /build/requirements.txt
 RUN pip install --no-cache-dir -r /build/requirements.txt
 
-# Bakery dependency set
-FROM python-builder-base AS bakery-deps
-COPY bakery/requirements.txt /build/requirements-bakery.txt
-RUN pip install --no-cache-dir -r /build/requirements-bakery.txt
-
-# ============================================================================
-# Stage 2: Shared runtime base
-# ============================================================================
-FROM python:3.11-slim AS python-runtime-base
+FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd -m -u 1000 appuser
 
-ENV PYTHONPATH=/app \
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
-
-# ============================================================================
-# Stage 3A: API runtime image
-# ============================================================================
-FROM python-runtime-base AS api-runtime
-
-COPY --from=api-deps /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-COPY --chown=appuser:appuser api/ /app/api/
-COPY --chown=appuser:appuser shared/ /app/shared/
-COPY --chown=appuser:appuser kitchen/ /app/kitchen/
-COPY --chown=appuser:appuser config/ /app/config/
-COPY --chown=appuser:appuser config/bootstrap/ingredients/ /app/bootstrap/ingredients/
-COPY --chown=appuser:appuser config/bootstrap/recipes/ /app/bootstrap/recipes/
-COPY --chown=appuser:appuser docker/scripts/ /app/scripts/
-COPY --chown=appuser:appuser alembic/ /app/alembic/
-COPY --chown=appuser:appuser alembic.ini /app/alembic.ini
-
-RUN chmod +x /app/api/scripts/entrypoint-auto-migrate.sh \
-    && chmod +x /app/scripts/automated-setup.sh
-
-USER appuser
-
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
-# ============================================================================
-# Stage 3B: Bakery runtime image
-# ============================================================================
-FROM python-runtime-base AS bakery-runtime
-
-COPY --from=bakery-deps /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
 
 COPY --chown=appuser:appuser bakery/ /app/bakery/
 COPY --chown=appuser:appuser shared/ /app/shared/

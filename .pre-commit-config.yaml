@@ -12,14 +12,14 @@ repos:
     rev: v0.11.13
     hooks:
       - id: ruff
-        files: ^(api|tests|bakery|cli|kitchen|scripts)/.*\.py$
+        files: ^(bakery|shared|tests)/.*\.py$
 
   - repo: https://github.com/psf/black
     rev: 26.1.0
     hooks:
       - id: black
         args: ["--check"]
-        files: ^(api|tests|bakery|cli|kitchen|scripts)/.*\.py$
+        files: ^(bakery|shared|tests)/.*\.py$
 
   - repo: https://github.com/adrienverge/yamllint
     rev: v1.37.1
@@ -31,7 +31,7 @@ repos:
     hooks:
       - id: mypy
         name: mypy
-        entry: mypy api
+        entry: mypy bakery shared
         language: system
         pass_filenames: false
         stages: [pre-push]

@@ -1,28 +1,17 @@
-# ____                        _  ____      _
-# |  _ \ ___  _   _ _ __   __| |/ ___|__ _| | _____
-# | |_) / _ \| | | | '_ \ / _` | |   / _` | |/ / _ \
-# |  __/ (_) | |_| | | | | (_| | |__| (_| |   <  __/
-# |_|   \___/ \__,_|_| |_|\__,_|\____\__,_|_|\_\___|
-#
 apiVersion: v2
-name: poundcake
-description: Auto-remediation platform bridging Prometheus Alertmanager with StackStorm and optional Bakery ticket translation
+name: bakery
+description: Standalone communication integration service for external ticketing and messaging systems
 type: application
-# This is the chart version. This version number should be incremented each time you make changes
-# to the chart and its templates, including the chart's dependencies.
-version: 0.2.68
-
-# This is the version number of the application being deployed. This version number should be
-# incremented each time you make changes to the application.
-appVersion: "2.0.169"
+version: 0.1.0
+appVersion: "0.1.0"
 maintainers:
   - name: Jake Briggs
 keywords:
-  - alertmanager
-  - stackstorm
-  - auto-remediation
-  - prometheus
-  - automation
-home: https://github.com/rackerlabs/poundcake
+  - communications
+  - ticketing
+  - messaging
+  - fastapi
+  - integrations
+home: https://github.com/rackerlabs/bakery
 sources:
-  - https://github.com/rackerlabs/poundcake
+  - https://github.com/rackerlabs/bakery

@@ -2,9 +2,9 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: {{ include "poundcake.bakeryName" . }}-httproute
+  name: {{ include "bakery.fullname" . }}-httproute
   labels:
-    {{- include "poundcake.labels" . | nindent 4 }}
+    {{- include "bakery.labels" . | nindent 4 }}
     app.kubernetes.io/component: bakery-gateway
   {{- with .Values.bakery.gateway.annotations }}
   annotations:
@@ -29,6 +29,6 @@ spec:
         type: PathPrefix
         value: /
     backendRefs:
-    - name: {{ include "poundcake.bakeryName" . }}
+    - name: {{ include "bakery.fullname" . }}
       port: {{ .Values.bakery.service.port }}
 {{- end }}

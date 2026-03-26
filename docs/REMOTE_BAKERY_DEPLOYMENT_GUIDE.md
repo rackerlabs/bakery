@@ -45,7 +45,7 @@ bakery:
 ```
 
 ```bash
-./install/install-bakery-helm.sh --bakery-auth-secret-name bakery-hmac
+./bin/install-bakery.sh --bakery-auth-secret-name bakery-hmac
 ```
 
 Verify Bakery before touching PoundCake:

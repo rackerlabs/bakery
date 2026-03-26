@@ -2,9 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BIN_DIR="${SCRIPT_DIR}/../bin"
-INSTALLER="${BIN_DIR}/install-bakery.sh"
-WRAPPER="${SCRIPT_DIR}/../../install/install-bakery-helm.sh"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+INSTALLER="${ROOT_DIR}/bin/install-bakery.sh"
 
 fail() {
   echo "[FAIL] $*" >&2
@@ -37,11 +36,10 @@ assert_not_contains() {
   fi
 }
 
-echo "Checking standalone Bakery wrapper..."
+echo "Checking standalone Bakery installer entrypoint..."
 [[ -x "${INSTALLER}" ]] || fail "missing ${INSTALLER}"
-[[ -x "${WRAPPER}" ]] || fail "missing ${WRAPPER}"
-assert_contains 'exec "$PROJECT_ROOT/helm/bin/install-bakery.sh" "$@"' "${WRAPPER}"
-assert_not_contains "install-poundcake" "${WRAPPER}"
+assert_contains 'CHART_REF="${BAKERY_CHART_REF:-oci://ghcr.io/rackerlabs/charts/bakery}"' "${INSTALLER}"
+assert_not_contains "install-poundcake" "${INSTALLER}"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
@@ -75,9 +73,6 @@ secret_exists_for_name() {
       ;;
     custom-auth)
       printf '%s\n' "${MOCK_CUSTOM_AUTH_SECRET_EXISTS:-0}"
-      ;;
-    legacy-rel-bakery-secret)
-      printf '%s\n' "${MOCK_LEGACY_AUTH_SECRET_EXISTS:-0}"
       ;;
     *)
       printf '%s\n' "${MOCK_GENERIC_SECRET_EXISTS:-0}"
@@ -162,11 +157,13 @@ run_with_mocks "${EXISTING_PROVIDER_OUT}" \
 
 assert_contains "Installing Bakery release bakery into namespace env-ns" "${EXISTING_PROVIDER_OUT}"
 assert_contains "upgrade --install bakery" "${TMP_DIR}/helm.log"
+assert_contains "oci://ghcr.io/rackerlabs/charts/bakery" "${TMP_DIR}/helm.log"
 assert_contains "--namespace env-ns" "${TMP_DIR}/helm.log"
 assert_contains "--set bakery.enabled=true" "${TMP_DIR}/helm.log"
 assert_contains "--set-string bakery.config.activeProvider=rackspace_core" "${TMP_DIR}/helm.log"
 assert_contains "--set-string bakery.auth.existingSecret=bakery-secret" "${TMP_DIR}/helm.log"
 assert_contains "--set-string bakery.rackspaceCore.existingSecret=bakery-rackspace-core" "${TMP_DIR}/helm.log"
+assert_contains "--version 0.1.0" "${TMP_DIR}/helm.log"
 assert_contains "-f ${TMP_DIR}/values.yaml" "${TMP_DIR}/helm.log"
 assert_contains "--set-string bakery.image.tag=0.1.9" "${TMP_DIR}/helm.log"
 assert_contains "--wait" "${TMP_DIR}/helm.log"
@@ -206,23 +203,5 @@ if run_with_mocks "${MISSING_PROVIDER_OUT}" \
   fail "expected missing provider credentials to fail"
 fi
 assert_contains "Active provider rackspace_core requires credentials or an existing secret." "${MISSING_PROVIDER_OUT}"
-
-echo "Validating legacy PoundCake env fallback support..."
-LEGACY_ENV_OUT="${TMP_DIR}/legacy-env.out"
-run_with_mocks "${LEGACY_ENV_OUT}" \
-  env \
-  POUNDCAKE_NAMESPACE="legacy-ns" \
-  POUNDCAKE_RELEASE_NAME="legacy-rel" \
-  POUNDCAKE_BAKERY_IMAGE_TAG="legacy-tag" \
-  MOCK_BAKERY_RACKSPACE_SECRET_EXISTS="1" \
-  MOCK_LEGACY_AUTH_SECRET_EXISTS="0" \
-  "${INSTALLER}" \
-  --bakery-active-provider rackspace_core
-
-assert_contains "upgrade --install legacy-rel" "${TMP_DIR}/helm.log"
-assert_contains "--namespace legacy-ns" "${TMP_DIR}/helm.log"
-assert_contains "--set-string bakery.auth.existingSecret=legacy-rel-bakery-secret" "${TMP_DIR}/helm.log"
-assert_contains "--set-string bakery.image.tag=legacy-tag" "${TMP_DIR}/helm.log"
-assert_contains "legacy-rel-bakery-secret" "${TMP_DIR}/kubectl-created-secrets.log"
 
 echo "[PASS] Bakery install script regression checks passed"

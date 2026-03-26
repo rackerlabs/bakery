@@ -14,7 +14,8 @@ renaming.
 ## Install
 
 You can pre-create secrets yourself or let the installer create them when credentials are supplied
-as flags.
+as flags. The canonical installer lives at [`bin/install-bakery.sh`](../bin/install-bakery.sh) and
+installs the published OCI chart `oci://ghcr.io/rackerlabs/charts/bakery` by default.
 
 Example Rackspace Core secret:
 
@@ -33,11 +34,11 @@ kubectl -n bakery create secret generic bakery-hmac \
   --from-literal=active-key="$(openssl rand -base64 32)"
 ```
 
-Install Bakery with the repo wrapper:
+Install Bakery with the OCI installer:
 
 ```bash
 export BAKERY_NAMESPACE="bakery"
-./install/install-bakery-helm.sh \
+./bin/install-bakery.sh \
   --bakery-active-provider rackspace_core \
   --bakery-auth-secret-name bakery-hmac
 ```
@@ -45,11 +46,17 @@ export BAKERY_NAMESPACE="bakery"
 Install Bakery while having the installer create the Rackspace Core secret:
 
 ```bash
-./install/install-bakery-helm.sh \
+./bin/install-bakery.sh \
   --bakery-active-provider rackspace_core \
   --bakery-rackspace-url <rackspace-core-url> \
   --bakery-rackspace-username <rackspace-core-username> \
   --bakery-rackspace-password '<rackspace-core-password>'
+```
+
+Override the OCI chart version when needed:
+
+```bash
+BAKERY_CHART_VERSION="0.1.0" ./bin/install-bakery.sh --bakery-auth-secret-name bakery-hmac
 ```
 
 ## Gateway Publication

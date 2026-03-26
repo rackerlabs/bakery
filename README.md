@@ -44,12 +44,16 @@ helm unittest ./helm --file 'tests/unittest/*_test.yaml'
 
 ## Install
 
-The repo-managed entrypoints are:
+Bakery ships a standalone Helm chart in [`helm/`](helm/), and the canonical installer entrypoint is
+the root-level OCI installer:
 
 ```bash
-./install/install-bakery-helm.sh
-./helm/bin/install-bakery.sh
+./bin/install-bakery.sh
 ```
+
+By default it installs `oci://ghcr.io/rackerlabs/charts/bakery` and uses the repo's
+[`helm/Chart.yaml`](helm/Chart.yaml) version unless you override
+`BAKERY_CHART_VERSION` or pass `--bakery-chart-version`.
 
 See [docs/DEPLOY.md](docs/DEPLOY.md) for standalone installation and
 [docs/REMOTE_BAKERY_DEPLOYMENT_GUIDE.md](docs/REMOTE_BAKERY_DEPLOYMENT_GUIDE.md) for the remote

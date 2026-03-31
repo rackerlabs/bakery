@@ -53,6 +53,40 @@ class Settings:
         self.bakery_hmac_timestamp_skew_sec: int = int(
             os.getenv("BAKERY_HMAC_TIMESTAMP_SKEW_SEC", "300")
         )
+        self.bakery_admin_hmac_active_key_id: str = os.getenv(
+            "BAKERY_ADMIN_HMAC_ACTIVE_KEY_ID",
+            self.bakery_hmac_active_key_id,
+        )
+        self.bakery_admin_hmac_active_key: str = os.getenv(
+            "BAKERY_ADMIN_HMAC_ACTIVE_KEY",
+            self.bakery_hmac_active_key,
+        )
+        self.bakery_admin_hmac_next_key_id: str = os.getenv(
+            "BAKERY_ADMIN_HMAC_NEXT_KEY_ID",
+            self.bakery_hmac_next_key_id,
+        )
+        self.bakery_admin_hmac_next_key: str = os.getenv(
+            "BAKERY_ADMIN_HMAC_NEXT_KEY",
+            self.bakery_hmac_next_key,
+        )
+        self.bakery_secret_encryption_key: str = os.getenv("BAKERY_SECRET_ENCRYPTION_KEY", "")
+        self.bakery_monitor_default_key_id: str = os.getenv(
+            "BAKERY_MONITOR_DEFAULT_KEY_ID",
+            "active",
+        )
+        self.bakery_monitor_bootstrap_key_id: str = os.getenv(
+            "BAKERY_MONITOR_BOOTSTRAP_KEY_ID",
+            "bootstrap",
+        )
+        self.bakery_monitor_heartbeat_interval_sec: int = int(
+            os.getenv("BAKERY_MONITOR_HEARTBEAT_INTERVAL_SEC", "30")
+        )
+        self.bakery_monitor_miss_threshold: int = int(
+            os.getenv("BAKERY_MONITOR_MISS_THRESHOLD", "5")
+        )
+        self.bakery_monitor_sweep_interval_sec: int = int(
+            os.getenv("BAKERY_MONITOR_SWEEP_INTERVAL_SEC", "5")
+        )
 
         # ServiceNow
         self.servicenow_url: Optional[str] = os.getenv("SERVICENOW_URL")

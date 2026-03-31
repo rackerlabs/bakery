@@ -8,6 +8,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Integer,
     JSON,
     String,
     Text,
@@ -187,6 +188,7 @@ class Ticket(Base):
     )
     provider_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     provider_ticket_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    monitor_uuid: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     state: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
@@ -275,4 +277,141 @@ class IdempotencyKey(Base):
     operation_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class MonitorBootstrapCredential(Base):
+    """Bootstrap credential used for first-time PoundCake monitor registration."""
+
+    __tablename__ = "monitor_bootstrap_credentials"
+    __table_args__ = (
+        UniqueConstraint("monitor_id", name="uq_monitor_bootstrap_credentials_monitor_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    monitor_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    key_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    encrypted_secret: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class Monitor(Base):
+    """Registered PoundCake monitor identity and liveness state."""
+
+    __tablename__ = "monitors"
+    __table_args__ = (
+        UniqueConstraint("monitor_uuid", name="uq_monitors_monitor_uuid"),
+        UniqueConstraint("monitor_id", name="uq_monitors_monitor_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    monitor_uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    monitor_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    key_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    encrypted_secret: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="healthy", index=True)
+    route_catalog_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    route_sync_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    last_checkin_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    unreachable_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_seen_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class MonitorRouteCatalogEntry(Base):
+    """Registered PoundCake route catalog entry."""
+
+    __tablename__ = "monitor_route_catalog_entries"
+    __table_args__ = (
+        UniqueConstraint(
+            "monitor_uuid",
+            "scope",
+            "owner_key",
+            "route_id",
+            name="uq_monitor_route_catalog_entries_monitor_route",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    monitor_uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    scope: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    owner_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    route_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    execution_target: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    destination_target: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    provider_config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    outage_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class MonitorOutageRouteState(Base):
+    """Tracks the reused outage communication for one monitor route."""
+
+    __tablename__ = "monitor_outage_route_states"
+    __table_args__ = (
+        UniqueConstraint(
+            "monitor_uuid",
+            "scope",
+            "owner_key",
+            "route_id",
+            name="uq_monitor_outage_route_states_monitor_route",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    monitor_uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    scope: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    owner_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    route_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    ticket_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    last_state: Mapped[str] = mapped_column(String(32), nullable=False, default="healthy")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class MonitorEvent(Base):
+    """Audit trail of registration, route sync, and reachability transitions."""
+
+    __tablename__ = "monitor_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    monitor_uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True
     )

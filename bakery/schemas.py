@@ -16,6 +16,14 @@ from shared.bakery_contract import (
     CommunicationOperationResponse,
     CommunicationResponse,
     CommunicationUpdateRequest,
+    MonitorBootstrapCredentialResponse,
+    MonitorHeartbeatRequest,
+    MonitorHeartbeatResponse,
+    MonitorRegistrationRequest,
+    MonitorRegistrationResponse,
+    MonitorRouteCatalogEntry,
+    MonitorRouteCatalogSyncRequest,
+    MonitorRouteCatalogSyncResponse,
 )
 
 __all__ = [
@@ -27,6 +35,14 @@ __all__ = [
     "CommunicationOperationResponse",
     "CommunicationResponse",
     "CommunicationUpdateRequest",
+    "MonitorBootstrapCredentialResponse",
+    "MonitorHeartbeatRequest",
+    "MonitorHeartbeatResponse",
+    "MonitorRegistrationRequest",
+    "MonitorRegistrationResponse",
+    "MonitorRouteCatalogEntry",
+    "MonitorRouteCatalogSyncRequest",
+    "MonitorRouteCatalogSyncResponse",
 ]
 
 

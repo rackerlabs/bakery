@@ -14,8 +14,10 @@ renaming.
 ## Install
 
 You can pre-create secrets yourself or let the installer create them when credentials are supplied
-as flags. The canonical installer lives at [`bin/install-bakery.sh`](../bin/install-bakery.sh) and
-installs the published OCI chart `oci://ghcr.io/rackerlabs/charts/bakery` by default.
+as flags. Run the canonical installer from the repository root at
+[`bin/install-bakery.sh`](../bin/install-bakery.sh); the older wrapper paths under `install/` and
+`helm/bin/` have been removed. By default it installs the published OCI chart
+`oci://ghcr.io/rackerlabs/charts/bakery`.
 
 Example Rackspace Core secret:
 
@@ -31,10 +33,14 @@ Optional HMAC auth secret:
 ```bash
 kubectl -n bakery create secret generic bakery-hmac \
   --from-literal=active-key-id=active \
-  --from-literal=active-key="$(openssl rand -base64 32)"
+  --from-literal=active-key="$(openssl rand -base64 32)" \
+  --from-literal=monitor-encryption-key="$(openssl rand -base64 32)"
 ```
 
-Install Bakery with the OCI installer:
+The `monitor-encryption-key` is required when Bakery stores PoundCake bootstrap credentials and
+per-monitor HMAC secrets.
+
+From the repository root, install Bakery with the OCI installer:
 
 ```bash
 export BAKERY_NAMESPACE="bakery"
@@ -43,7 +49,8 @@ export BAKERY_NAMESPACE="bakery"
   --bakery-auth-secret-name bakery-hmac
 ```
 
-Install Bakery while having the installer create the Rackspace Core secret:
+From the repository root, install Bakery while having the installer create the Rackspace Core
+secret:
 
 ```bash
 ./bin/install-bakery.sh \
@@ -56,7 +63,14 @@ Install Bakery while having the installer create the Rackspace Core secret:
 Override the OCI chart version when needed:
 
 ```bash
-BAKERY_CHART_VERSION="0.1.0" ./bin/install-bakery.sh --bakery-auth-secret-name bakery-hmac
+BAKERY_CHART_VERSION="0.1.1" ./bin/install-bakery.sh --bakery-auth-secret-name bakery-hmac
+```
+
+Override the OCI chart reference when needed:
+
+```bash
+BAKERY_CHART_REF="oci://ghcr.io/rackerlabs/charts/bakery" ./bin/install-bakery.sh \
+  --bakery-auth-secret-name bakery-hmac
 ```
 
 ## Gateway Publication

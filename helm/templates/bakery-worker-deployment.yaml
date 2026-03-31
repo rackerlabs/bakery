@@ -123,6 +123,22 @@ spec:
                   name: {{ $bakeryAuthSecretName }}
                   key: {{ .Values.bakery.auth.secretKeys.nextKey }}
                   optional: true
+            - name: BAKERY_SECRET_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $bakeryAuthSecretName }}
+                  key: {{ .Values.bakery.auth.secretKeys.monitorEncryptionKey }}
+                  optional: true
+            - name: BAKERY_MONITOR_DEFAULT_KEY_ID
+              value: {{ .Values.bakery.monitoring.defaultKeyId | quote }}
+            - name: BAKERY_MONITOR_BOOTSTRAP_KEY_ID
+              value: {{ .Values.bakery.monitoring.bootstrapKeyId | quote }}
+            - name: BAKERY_MONITOR_HEARTBEAT_INTERVAL_SEC
+              value: {{ .Values.bakery.monitoring.heartbeatIntervalSec | quote }}
+            - name: BAKERY_MONITOR_MISS_THRESHOLD
+              value: {{ .Values.bakery.monitoring.missThreshold | quote }}
+            - name: BAKERY_MONITOR_SWEEP_INTERVAL_SEC
+              value: {{ .Values.bakery.monitoring.sweepIntervalSec | quote }}
             {{- if .Values.bakery.servicenow.existingSecret }}
             - name: SERVICENOW_URL
               valueFrom:

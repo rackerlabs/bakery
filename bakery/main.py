@@ -12,8 +12,10 @@ import structlog
 
 from bakery.api.communications import router as communications_router
 from bakery.config import settings
+from bakery.api.admin import router as admin_router
 from bakery.api.health import router as health_router
 from bakery.api.mixers import router as mixers_router
+from bakery.api.monitors import router as monitors_router
 from bakery.api.tickets import router as tickets_router
 from bakery.metrics import render_metrics
 
@@ -78,6 +80,17 @@ tags_metadata = [
             "Submit and query provider-agnostic communications. "
             "Mutating endpoints return operation handles and are processed asynchronously."
         ),
+    },
+    {
+        "name": "monitors",
+        "description": (
+            "Register PoundCake monitors, sync their communication route catalogs, and accept "
+            "heartbeat check-ins."
+        ),
+    },
+    {
+        "name": "admin",
+        "description": "Administrative monitor bootstrap credential management endpoints.",
     },
     {
         "name": "tickets",
@@ -152,6 +165,8 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 
 # Include routers
 app.include_router(health_router, prefix=settings.api_prefix, tags=["health"])
+app.include_router(admin_router, prefix=settings.api_prefix, tags=["admin"])
+app.include_router(monitors_router, prefix=settings.api_prefix, tags=["monitors"])
 app.include_router(communications_router, prefix=settings.api_prefix, tags=["communications"])
 app.include_router(tickets_router, prefix=settings.api_prefix, tags=["tickets"])
 app.include_router(mixers_router, prefix=settings.api_prefix, tags=["mixers"])

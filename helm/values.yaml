@@ -142,8 +142,16 @@ bakery:
       activeKey: "active-key"
       nextKeyId: "next-key-id"
       nextKey: "next-key"
+      monitorEncryptionKey: "monitor-encryption-key"
     hmac:
       timestampSkewSec: 300
+
+  monitoring:
+    defaultKeyId: "active"
+    bootstrapKeyId: "bootstrap"
+    heartbeatIntervalSec: 30
+    missThreshold: 5
+    sweepIntervalSec: 5
 
   client:
     enabled: false

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import math
 import time
 from datetime import datetime, timedelta, timezone
@@ -12,6 +13,7 @@ from typing import Any
 import structlog
 from sqlalchemy import and_, or_
 
+from bakery.api.tickets import _enqueue_ticket_action_request, create_ticket_request
 from bakery.config import settings
 from bakery.database import SessionLocal
 from bakery.formatters import provider_config_from_context, render_provider_content
@@ -22,7 +24,15 @@ from bakery.metrics import (
     BAKERY_RETRIES_TOTAL,
 )
 from bakery.mixer.factory import get_mixer
-from bakery.models import Ticket, TicketOperation
+from bakery.models import (
+    Monitor,
+    MonitorOutageRouteState,
+    MonitorRouteCatalogEntry,
+    Ticket,
+    TicketOperation,
+)
+from bakery.monitoring import get_outage_enabled_routes, record_monitor_event
+from bakery.schemas import TicketCommentRequest, TicketCreateRequest
 
 logger = structlog.get_logger()
 
@@ -459,6 +469,242 @@ def _build_dry_run_result(
     }
 
 
+def _monitor_threshold_deadline(monitor: Monitor) -> datetime:
+    baseline = monitor.last_checkin_at or monitor.created_at
+    return baseline + timedelta(
+        seconds=settings.bakery_monitor_heartbeat_interval_sec
+        * settings.bakery_monitor_miss_threshold
+    )
+
+
+def _ticket_is_closed(ticket: Ticket | None) -> bool:
+    if ticket is None:
+        return True
+    return str(ticket.state or "").strip().lower() in {"closed", "confirmed_solved"}
+
+
+def _idempotency_key(*parts: str) -> str:
+    joined = ":".join(parts)
+    return hashlib.sha256(joined.encode("utf-8")).hexdigest()
+
+
+def _outage_open_payload(monitor: Monitor, route: MonitorRouteCatalogEntry) -> TicketCreateRequest:
+    title = f"PoundCake monitor unreachable: {monitor.monitor_id}"
+    description = (
+        f"PoundCake monitor `{monitor.monitor_id}` (`{monitor.monitor_uuid}`) has not checked in "
+        f"for at least {settings.bakery_monitor_miss_threshold} heartbeat intervals."
+    )
+    return TicketCreateRequest(
+        title=title,
+        description=description,
+        message=description,
+        source="bakery",
+        context={
+            "source": "bakery",
+            "provider_type": route.execution_target,
+            "execution_target": route.execution_target,
+            "destination_target": route.destination_target or "",
+            "route_label": route.label,
+            "provider_config": route.provider_config or {},
+            "monitor": {
+                "monitor_id": monitor.monitor_id,
+                "monitor_uuid": monitor.monitor_uuid,
+            },
+        },
+    )
+
+
+def _outage_comment_payload(
+    monitor: Monitor,
+    *,
+    recovered: bool,
+) -> TicketCommentRequest:
+    if recovered:
+        comment = (
+            f"PoundCake monitor `{monitor.monitor_id}` resumed check-ins at {_now().isoformat()}. "
+            "Leaving this communication open for operator follow-up."
+        )
+    else:
+        comment = (
+            f"PoundCake monitor `{monitor.monitor_id}` is unreachable again as of "
+            f"{_now().isoformat()}."
+        )
+    return TicketCommentRequest(
+        comment=comment,
+        context={
+            "source": "bakery",
+            "monitor": {
+                "monitor_id": monitor.monitor_id,
+                "monitor_uuid": monitor.monitor_uuid,
+            },
+        },
+    )
+
+
+def _ensure_route_state(
+    db,
+    *,
+    monitor_uuid: str,
+    route: MonitorRouteCatalogEntry,
+) -> MonitorOutageRouteState:
+    state = (
+        db.query(MonitorOutageRouteState)
+        .filter(
+            MonitorOutageRouteState.monitor_uuid == monitor_uuid,
+            MonitorOutageRouteState.scope == route.scope,
+            MonitorOutageRouteState.owner_key == route.owner_key,
+            MonitorOutageRouteState.route_id == route.route_id,
+        )
+        .first()
+    )
+    if state is not None:
+        return state
+    state = MonitorOutageRouteState(
+        monitor_uuid=monitor_uuid,
+        scope=route.scope,
+        owner_key=route.owner_key,
+        route_id=route.route_id,
+        last_state="healthy",
+        created_at=_now(),
+        updated_at=_now(),
+    )
+    db.add(state)
+    db.flush()
+    return state
+
+
+def _current_ticket(db, ticket_id: str | None) -> Ticket | None:
+    if not ticket_id:
+        return None
+    return db.query(Ticket).filter(Ticket.internal_ticket_id == ticket_id).first()
+
+
+def _handle_monitor_unreachable_transition(monitor: Monitor) -> None:
+    now = _now()
+    with SessionLocal() as db:
+        db_monitor = db.query(Monitor).filter(Monitor.monitor_uuid == monitor.monitor_uuid).first()
+        if db_monitor is None:
+            return
+        routes = get_outage_enabled_routes(db, monitor_uuid=db_monitor.monitor_uuid)
+        for route in routes:
+            state = _ensure_route_state(db, monitor_uuid=db_monitor.monitor_uuid, route=route)
+            ticket = _current_ticket(db, state.ticket_id)
+            if ticket is None or _ticket_is_closed(ticket):
+                accepted = asyncio.run(
+                    create_ticket_request(
+                        _outage_open_payload(db_monitor, route),
+                        idempotency_key=_idempotency_key(
+                            "monitor",
+                            db_monitor.monitor_uuid,
+                            route.scope,
+                            route.owner_key,
+                            route.route_id,
+                            "open",
+                            now.isoformat(),
+                        ),
+                        db=db,
+                        monitor_uuid=db_monitor.monitor_uuid,
+                        validate_route=False,
+                    )
+                )
+                state.ticket_id = accepted.ticket_id
+            else:
+                _enqueue_ticket_action_request(
+                    db,
+                    ticket.internal_ticket_id,
+                    "comment",
+                    _outage_comment_payload(db_monitor, recovered=False).model_dump(),
+                    _idempotency_key(
+                        "monitor",
+                        db_monitor.monitor_uuid,
+                        route.scope,
+                        route.owner_key,
+                        route.route_id,
+                        "down-comment",
+                        now.isoformat(),
+                    ),
+                    monitor_uuid=db_monitor.monitor_uuid,
+                    validate_route=False,
+                )
+            state.last_state = "unreachable"
+            state.updated_at = now
+
+        db_monitor.status = "unreachable"
+        db_monitor.unreachable_at = now
+        db_monitor.updated_at = now
+        record_monitor_event(
+            db,
+            monitor_uuid=db_monitor.monitor_uuid,
+            event_type="unreachable",
+            payload={"monitor_id": db_monitor.monitor_id, "route_count": len(routes)},
+        )
+        db.commit()
+
+
+def _handle_monitor_recovery_transition(monitor: Monitor) -> None:
+    now = _now()
+    with SessionLocal() as db:
+        db_monitor = db.query(Monitor).filter(Monitor.monitor_uuid == monitor.monitor_uuid).first()
+        if db_monitor is None:
+            return
+        states = (
+            db.query(MonitorOutageRouteState)
+            .filter(MonitorOutageRouteState.monitor_uuid == db_monitor.monitor_uuid)
+            .all()
+        )
+        for state in states:
+            ticket = _current_ticket(db, state.ticket_id)
+            if ticket is None:
+                state.last_state = "healthy"
+                state.updated_at = now
+                continue
+            _enqueue_ticket_action_request(
+                db,
+                ticket.internal_ticket_id,
+                "comment",
+                _outage_comment_payload(db_monitor, recovered=True).model_dump(),
+                _idempotency_key(
+                    "monitor",
+                    db_monitor.monitor_uuid,
+                    state.scope,
+                    state.owner_key,
+                    state.route_id,
+                    "recovery-comment",
+                    now.isoformat(),
+                ),
+                monitor_uuid=db_monitor.monitor_uuid,
+                validate_route=False,
+            )
+            state.last_state = "healthy"
+            state.updated_at = now
+
+        db_monitor.status = "healthy"
+        db_monitor.unreachable_at = None
+        db_monitor.updated_at = now
+        record_monitor_event(
+            db,
+            monitor_uuid=db_monitor.monitor_uuid,
+            event_type="recovered",
+            payload={"monitor_id": db_monitor.monitor_id, "state_count": len(states)},
+        )
+        db.commit()
+
+
+def _run_monitor_sweep() -> None:
+    now = _now()
+    with SessionLocal() as db:
+        monitors = db.query(Monitor).all()
+        for monitor in monitors:
+            overdue = _monitor_threshold_deadline(monitor) <= now
+            if overdue and monitor.status != "unreachable":
+                db.expunge(monitor)
+                _handle_monitor_unreachable_transition(monitor)
+                continue
+            if not overdue and monitor.status == "unreachable":
+                db.expunge(monitor)
+                _handle_monitor_recovery_transition(monitor)
+
+
 def _process_operation(operation: TicketOperation) -> None:
     started = time.monotonic()
     ticket = _load_ticket(operation.internal_ticket_id)
@@ -506,7 +752,15 @@ def run_worker() -> None:
         batch_size=settings.worker_batch_size,
         poll_interval_sec=settings.worker_poll_interval_sec,
     )
+    next_monitor_sweep = time.monotonic()
     while True:
+        if time.monotonic() >= next_monitor_sweep:
+            try:
+                _run_monitor_sweep()
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Monitor sweep failed", error=str(exc))
+            next_monitor_sweep = time.monotonic() + settings.bakery_monitor_sweep_interval_sec
+
         claimed = _claim_operations(settings.worker_batch_size)
         if not claimed:
             time.sleep(settings.worker_poll_interval_sec)

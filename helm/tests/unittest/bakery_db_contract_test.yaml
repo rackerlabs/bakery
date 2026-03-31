@@ -130,7 +130,7 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/example/bakery:0.1.0
+          value: ghcr.io/example/bakery:0.1.1
         template: templates/bakery-deployment.yaml
 
   - it: reports Bakery version from the deployed Bakery image tag
@@ -145,3 +145,37 @@ tests:
             name: BAKERY_APP_VERSION
             value: "0.1.9"
         template: templates/bakery-deployment.yaml
+
+  - it: injects monitor registry secret and timing env vars into api and worker
+    set:
+      bakery.enabled: true
+      bakery.database.createServer: true
+      bakery.auth.existingSecret: external-bakery-auth
+      bakery.monitoring.defaultKeyId: monitor-active
+      bakery.monitoring.bootstrapKeyId: monitor-bootstrap
+      bakery.monitoring.heartbeatIntervalSec: 30
+      bakery.monitoring.missThreshold: 5
+      bakery.monitoring.sweepIntervalSec: 7
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BAKERY_SECRET_ENCRYPTION_KEY
+            valueFrom:
+              secretKeyRef:
+                name: external-bakery-auth
+                key: monitor-encryption-key
+                optional: true
+        template: templates/bakery-deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BAKERY_MONITOR_BOOTSTRAP_KEY_ID
+            value: monitor-bootstrap
+        template: templates/bakery-deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BAKERY_MONITOR_SWEEP_INTERVAL_SEC
+            value: "7"
+        template: templates/bakery-worker-deployment.yaml

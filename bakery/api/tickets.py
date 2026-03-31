@@ -12,11 +12,12 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
-from bakery.auth import require_hmac_auth
+from bakery.auth import MonitorAuthContext, require_monitor_hmac_auth
 from bakery.config import settings
 from bakery.database import get_db
 from bakery.mixer.factory import get_mixer
 from bakery.metrics import BAKERY_OPERATIONS_TOTAL
+from bakery.monitoring import monitor_route_validation_required, validate_monitor_route_payload
 from bakery.models import IdempotencyKey, Ticket, TicketOperation
 from bakery.schemas import (
     OperationAcceptedResponse,
@@ -29,7 +30,7 @@ from bakery.schemas import (
     TicketUpdateRequest,
 )
 
-router = APIRouter(dependencies=[Depends(require_hmac_auth)])
+router = APIRouter()
 
 
 def _now() -> datetime:
@@ -457,16 +458,61 @@ def _ticket_response(
     )
 
 
-@router.post("/tickets", response_model=OperationAcceptedResponse, status_code=202)
-async def create_ticket(
+def _load_owned_ticket(
+    db: Session,
+    ticket_id: str,
+    *,
+    monitor_uuid: str | None,
+    enforce_monitor: bool = True,
+) -> Ticket:
+    ticket = db.query(Ticket).filter(Ticket.internal_ticket_id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if (
+        enforce_monitor
+        and monitor_uuid is not None
+        and ticket.monitor_uuid not in {None, monitor_uuid}
+    ):
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    return ticket
+
+
+def _normalize_ticket_payload(
+    db: Session,
+    *,
+    request_payload: dict[str, Any],
+    monitor_uuid: str | None,
+    validate_route: bool,
+) -> dict[str, Any]:
+    if monitor_uuid is None or not validate_route:
+        return request_payload
+    if not monitor_route_validation_required(request_payload):
+        return request_payload
+    normalized, _ = validate_monitor_route_payload(
+        db,
+        monitor_uuid=monitor_uuid,
+        payload=request_payload,
+    )
+    return normalized
+
+
+async def create_ticket_request(
     payload: TicketCreateRequest,
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    db: Session = Depends(get_db),
+    *,
+    idempotency_key: str,
+    db: Session,
+    monitor_uuid: str | None = None,
+    validate_route: bool = True,
 ) -> OperationAcceptedResponse:
     key = _assert_idempotency_key(idempotency_key)
-    request_payload = payload.model_dump()
+    request_payload = _normalize_ticket_payload(
+        db,
+        request_payload=payload.model_dump(),
+        monitor_uuid=monitor_uuid,
+        validate_route=validate_route,
+    )
     request_hash = _canonical_hash(request_payload)
-    scope = "global"
+    scope = monitor_uuid or "global"
 
     existing = _resolve_idempotency(db, key, "create", scope, request_hash)
     if existing:
@@ -487,6 +533,7 @@ async def create_ticket(
     ticket = Ticket(
         internal_ticket_id=internal_ticket_id,
         provider_type=_requested_provider_type(request_payload),
+        monitor_uuid=monitor_uuid,
         state="queued",
         created_at=now,
         updated_at=now,
@@ -522,16 +569,29 @@ async def create_ticket(
     return _accepted(operation)
 
 
-def _enqueue_ticket_action(
+def _enqueue_ticket_action_request(
     db: Session,
     ticket_id: str,
     action: str,
     request_payload: dict[str, Any],
     idempotency_key: str,
+    *,
+    monitor_uuid: str | None = None,
+    validate_route: bool = True,
+    enforce_monitor: bool = True,
 ) -> OperationAcceptedResponse:
-    ticket = db.query(Ticket).filter(Ticket.internal_ticket_id == ticket_id).first()
-    if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
+    _load_owned_ticket(
+        db,
+        ticket_id,
+        monitor_uuid=monitor_uuid,
+        enforce_monitor=enforce_monitor,
+    )
+    request_payload = _normalize_ticket_payload(
+        db,
+        request_payload=request_payload,
+        monitor_uuid=monitor_uuid,
+        validate_route=validate_route,
+    )
 
     request_hash = _canonical_hash(request_payload)
     scope = ticket_id
@@ -578,15 +638,38 @@ def _enqueue_ticket_action(
     return _accepted(operation)
 
 
+@router.post("/tickets", response_model=OperationAcceptedResponse, status_code=202)
+async def create_ticket(
+    payload: TicketCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: MonitorAuthContext = Depends(require_monitor_hmac_auth),
+    db: Session = Depends(get_db),
+) -> OperationAcceptedResponse:
+    return await create_ticket_request(
+        payload,
+        idempotency_key=idempotency_key or "",
+        db=db,
+        monitor_uuid=auth.monitor_uuid,
+    )
+
+
 @router.patch("/tickets/{ticket_id}", response_model=OperationAcceptedResponse, status_code=202)
 async def update_ticket(
     ticket_id: str,
     payload: TicketUpdateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: MonitorAuthContext = Depends(require_monitor_hmac_auth),
     db: Session = Depends(get_db),
 ) -> OperationAcceptedResponse:
     key = _assert_idempotency_key(idempotency_key)
-    return _enqueue_ticket_action(db, ticket_id, "update", payload.model_dump(), key)
+    return _enqueue_ticket_action_request(
+        db,
+        ticket_id,
+        "update",
+        payload.model_dump(),
+        key,
+        monitor_uuid=auth.monitor_uuid,
+    )
 
 
 @router.post(
@@ -596,10 +679,18 @@ async def add_comment(
     ticket_id: str,
     payload: TicketCommentRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: MonitorAuthContext = Depends(require_monitor_hmac_auth),
     db: Session = Depends(get_db),
 ) -> OperationAcceptedResponse:
     key = _assert_idempotency_key(idempotency_key)
-    return _enqueue_ticket_action(db, ticket_id, "comment", payload.model_dump(), key)
+    return _enqueue_ticket_action_request(
+        db,
+        ticket_id,
+        "comment",
+        payload.model_dump(),
+        key,
+        monitor_uuid=auth.monitor_uuid,
+    )
 
 
 @router.post(
@@ -609,17 +700,27 @@ async def close_ticket(
     ticket_id: str,
     payload: TicketCloseRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: MonitorAuthContext = Depends(require_monitor_hmac_auth),
     db: Session = Depends(get_db),
 ) -> OperationAcceptedResponse:
     key = _assert_idempotency_key(idempotency_key)
-    return _enqueue_ticket_action(db, ticket_id, "close", payload.model_dump(), key)
+    return _enqueue_ticket_action_request(
+        db,
+        ticket_id,
+        "close",
+        payload.model_dump(),
+        key,
+        monitor_uuid=auth.monitor_uuid,
+    )
 
 
-@router.get("/tickets/{ticket_id}", response_model=TicketResponse)
-async def get_ticket(ticket_id: str, db: Session = Depends(get_db)) -> TicketResponse:
-    ticket = db.query(Ticket).filter(Ticket.internal_ticket_id == ticket_id).first()
-    if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
+async def get_ticket_request(
+    ticket_id: str,
+    *,
+    db: Session,
+    monitor_uuid: str | None = None,
+) -> TicketResponse:
+    ticket = _load_owned_ticket(db, ticket_id, monitor_uuid=monitor_uuid)
     operations = _load_ticket_operations(db, ticket_id, limit=500)
     last_sync = _latest_find_operation(operations)
     return _ticket_response(
@@ -630,11 +731,22 @@ async def get_ticket(ticket_id: str, db: Session = Depends(get_db)) -> TicketRes
     )
 
 
-@router.post("/tickets/{ticket_id}/find", response_model=TicketResponse)
-async def find_ticket(ticket_id: str, db: Session = Depends(get_db)) -> TicketResponse:
-    ticket = db.query(Ticket).filter(Ticket.internal_ticket_id == ticket_id).first()
-    if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
+@router.get("/tickets/{ticket_id}", response_model=TicketResponse)
+async def get_ticket(
+    ticket_id: str,
+    auth: MonitorAuthContext = Depends(require_monitor_hmac_auth),
+    db: Session = Depends(get_db),
+) -> TicketResponse:
+    return await get_ticket_request(ticket_id, db=db, monitor_uuid=auth.monitor_uuid)
+
+
+async def find_ticket_request(
+    ticket_id: str,
+    *,
+    db: Session,
+    monitor_uuid: str | None = None,
+) -> TicketResponse:
+    ticket = _load_owned_ticket(db, ticket_id, monitor_uuid=monitor_uuid)
 
     operations = _load_ticket_operations(db, ticket_id, limit=500)
     request_payload: dict[str, Any] = {"ticket_id": ticket.internal_ticket_id}
@@ -751,15 +863,23 @@ async def find_ticket(ticket_id: str, db: Session = Depends(get_db)) -> TicketRe
     )
 
 
+@router.post("/tickets/{ticket_id}/find", response_model=TicketResponse)
+async def find_ticket(
+    ticket_id: str,
+    auth: MonitorAuthContext = Depends(require_monitor_hmac_auth),
+    db: Session = Depends(get_db),
+) -> TicketResponse:
+    return await find_ticket_request(ticket_id, db=db, monitor_uuid=auth.monitor_uuid)
+
+
 @router.get("/tickets/{ticket_id}/operations", response_model=TicketOperationListResponse)
 async def get_ticket_operations(
     ticket_id: str,
     limit: int = 100,
+    auth: MonitorAuthContext = Depends(require_monitor_hmac_auth),
     db: Session = Depends(get_db),
 ) -> TicketOperationListResponse:
-    ticket = db.query(Ticket).filter(Ticket.internal_ticket_id == ticket_id).first()
-    if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
+    _load_owned_ticket(db, ticket_id, monitor_uuid=auth.monitor_uuid)
     operations = _load_ticket_operations(db, ticket_id, limit=limit)
     return TicketOperationListResponse(
         ticket_id=ticket_id,
@@ -770,11 +890,14 @@ async def get_ticket_operations(
 
 @router.get("/operations/{operation_id}", response_model=TicketOperationResponse)
 async def get_operation(
-    operation_id: str, db: Session = Depends(get_db)
+    operation_id: str,
+    auth: MonitorAuthContext = Depends(require_monitor_hmac_auth),
+    db: Session = Depends(get_db),
 ) -> TicketOperationResponse:
     operation = (
         db.query(TicketOperation).filter(TicketOperation.operation_id == operation_id).first()
     )
     if not operation:
         raise HTTPException(status_code=404, detail="Operation not found")
+    _load_owned_ticket(db, operation.internal_ticket_id, monitor_uuid=auth.monitor_uuid)
     return _op_response(operation)

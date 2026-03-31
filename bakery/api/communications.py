@@ -7,16 +7,14 @@ from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 
 from bakery.api.tickets import (
-    add_comment,
-    close_ticket,
-    create_ticket,
-    find_ticket,
+    _enqueue_ticket_action_request,
+    create_ticket_request,
+    find_ticket_request,
     get_operation,
-    get_ticket,
     get_ticket_operations,
-    update_ticket,
+    get_ticket_request,
 )
-from bakery.auth import require_hmac_auth
+from bakery.auth import MonitorAuthContext, require_monitor_hmac_auth
 from bakery.database import get_db
 from bakery.schemas import (
     TicketCloseRequest,
@@ -35,7 +33,47 @@ from shared.bakery_contract import (
     CommunicationUpdateRequest,
 )
 
-router = APIRouter(dependencies=[Depends(require_hmac_auth)])
+router = APIRouter()
+
+
+def _monitor_uuid(auth: MonitorAuthContext | object) -> str | None:
+    return auth.monitor_uuid if isinstance(auth, MonitorAuthContext) else None
+
+
+async def create_ticket(**kwargs):
+    return await create_ticket_request(**kwargs)
+
+
+async def update_ticket(**kwargs):
+    payload = kwargs.pop("payload")
+    return _enqueue_ticket_action_request(
+        request_payload=payload.model_dump(),
+        **kwargs,
+    )
+
+
+async def add_comment(**kwargs):
+    payload = kwargs.pop("payload")
+    return _enqueue_ticket_action_request(
+        request_payload=payload.model_dump(),
+        **kwargs,
+    )
+
+
+async def close_ticket(**kwargs):
+    payload = kwargs.pop("payload")
+    return _enqueue_ticket_action_request(
+        request_payload=payload.model_dump(),
+        **kwargs,
+    )
+
+
+async def get_ticket(**kwargs):
+    return await get_ticket_request(**kwargs)
+
+
+async def find_ticket(**kwargs):
+    return await find_ticket_request(**kwargs)
 
 
 def _map_accepted(ticket_response) -> CommunicationAcceptedResponse:
@@ -86,12 +124,14 @@ def _map_operation(ticket_response) -> CommunicationOperationResponse:
 async def open_communication(
     payload: CommunicationOpenRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: MonitorAuthContext = Depends(require_monitor_hmac_auth),
     db: Session = Depends(get_db),
 ) -> CommunicationAcceptedResponse:
     accepted = await create_ticket(
         payload=TicketCreateRequest(**payload.model_dump()),
-        idempotency_key=idempotency_key,
+        idempotency_key=idempotency_key or "",
         db=db,
+        monitor_uuid=_monitor_uuid(auth),
     )
     return _map_accepted(accepted)
 
@@ -105,13 +145,16 @@ async def update_communication(
     communication_id: str,
     payload: CommunicationUpdateRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: MonitorAuthContext = Depends(require_monitor_hmac_auth),
     db: Session = Depends(get_db),
 ) -> CommunicationAcceptedResponse:
     accepted = await update_ticket(
-        ticket_id=communication_id,
-        payload=TicketUpdateRequest(**payload.model_dump()),
-        idempotency_key=idempotency_key,
         db=db,
+        ticket_id=communication_id,
+        action="update",
+        payload=TicketUpdateRequest(**payload.model_dump()),
+        idempotency_key=idempotency_key or "",
+        monitor_uuid=_monitor_uuid(auth),
     )
     return _map_accepted(accepted)
 
@@ -125,17 +168,20 @@ async def notify_communication(
     communication_id: str,
     payload: CommunicationNotifyRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: MonitorAuthContext = Depends(require_monitor_hmac_auth),
     db: Session = Depends(get_db),
 ) -> CommunicationAcceptedResponse:
     accepted = await add_comment(
+        db=db,
         ticket_id=communication_id,
+        action="comment",
         payload=TicketCommentRequest(
             comment=payload.comment or payload.message or "",
             visibility=payload.visibility,
             context=payload.context,
         ),
-        idempotency_key=idempotency_key,
-        db=db,
+        idempotency_key=idempotency_key or "",
+        monitor_uuid=_monitor_uuid(auth),
     )
     return _map_accepted(accepted)
 
@@ -149,13 +195,16 @@ async def close_communication(
     communication_id: str,
     payload: CommunicationCloseRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: MonitorAuthContext = Depends(require_monitor_hmac_auth),
     db: Session = Depends(get_db),
 ) -> CommunicationAcceptedResponse:
     accepted = await close_ticket(
-        ticket_id=communication_id,
-        payload=TicketCloseRequest(**payload.model_dump()),
-        idempotency_key=idempotency_key,
         db=db,
+        ticket_id=communication_id,
+        action="close",
+        payload=TicketCloseRequest(**payload.model_dump()),
+        idempotency_key=idempotency_key or "",
+        monitor_uuid=_monitor_uuid(auth),
     )
     return _map_accepted(accepted)
 
@@ -163,18 +212,20 @@ async def close_communication(
 @router.get("/communications/{communication_id}", response_model=CommunicationResponse)
 async def get_communication(
     communication_id: str,
+    auth: MonitorAuthContext = Depends(require_monitor_hmac_auth),
     db: Session = Depends(get_db),
 ) -> CommunicationResponse:
-    ticket = await get_ticket(ticket_id=communication_id, db=db)
+    ticket = await get_ticket(ticket_id=communication_id, db=db, monitor_uuid=_monitor_uuid(auth))
     return _map_ticket(ticket)
 
 
 @router.post("/communications/{communication_id}/sync", response_model=CommunicationResponse)
 async def sync_communication(
     communication_id: str,
+    auth: MonitorAuthContext = Depends(require_monitor_hmac_auth),
     db: Session = Depends(get_db),
 ) -> CommunicationResponse:
-    ticket = await find_ticket(ticket_id=communication_id, db=db)
+    ticket = await find_ticket(ticket_id=communication_id, db=db, monitor_uuid=_monitor_uuid(auth))
     return _map_ticket(ticket)
 
 
@@ -185,9 +236,12 @@ async def sync_communication(
 async def get_communication_operations(
     communication_id: str,
     limit: int = 100,
+    auth: MonitorAuthContext = Depends(require_monitor_hmac_auth),
     db: Session = Depends(get_db),
 ) -> CommunicationOperationListResponse:
-    operations = await get_ticket_operations(ticket_id=communication_id, limit=limit, db=db)
+    operations = await get_ticket_operations(
+        ticket_id=communication_id, limit=limit, auth=auth, db=db
+    )
     return CommunicationOperationListResponse(
         communication_id=operations.ticket_id,
         operations=[_map_operation(item) for item in operations.operations],
@@ -201,7 +255,8 @@ async def get_communication_operations(
 )
 async def get_communication_operation(
     operation_id: str,
+    auth: MonitorAuthContext = Depends(require_monitor_hmac_auth),
     db: Session = Depends(get_db),
 ) -> CommunicationOperationResponse:
-    operation = await get_operation(operation_id=operation_id, db=db)
+    operation = await get_operation(operation_id=operation_id, auth=auth, db=db)
     return _map_operation(operation)

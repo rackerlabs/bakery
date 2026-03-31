@@ -12,10 +12,14 @@ from bakery.auth import (
     require_bootstrap_hmac_auth,
     require_monitor_hmac_auth,
 )
+from bakery.collection_jobs import claim_next_collection_job, complete_collection_job
 from bakery.database import get_db
 from bakery.models import Monitor
 from bakery.monitoring import record_heartbeat, register_monitor, sync_monitor_routes
 from shared.bakery_contract import (
+    CollectionJobClaimResponse,
+    CollectionJobCompleteRequest,
+    CollectionJobResponse,
     MonitorHeartbeatRequest,
     MonitorHeartbeatResponse,
     MonitorRegistrationRequest,
@@ -64,5 +68,33 @@ async def post_monitor_heartbeat(
     if monitor is None:
         raise HTTPException(status_code=401, detail="Unknown monitor")
     response = record_heartbeat(db, monitor=monitor, request=payload)
+    db.commit()
+    return response
+
+
+@router.post("/monitors/jobs/claim-next", response_model=CollectionJobClaimResponse)
+async def post_claim_next_collection_job(
+    auth: MonitorAuthContext = Depends(require_monitor_hmac_auth),
+    db: Session = Depends(get_db),
+) -> CollectionJobClaimResponse:
+    monitor = db.query(Monitor).filter(Monitor.monitor_uuid == auth.monitor_uuid).first()
+    if monitor is None:
+        raise HTTPException(status_code=401, detail="Unknown monitor")
+    response = claim_next_collection_job(db, monitor=monitor)
+    db.commit()
+    return response
+
+
+@router.post("/monitors/jobs/{job_id}/complete", response_model=CollectionJobResponse)
+async def post_complete_collection_job(
+    job_id: str,
+    payload: CollectionJobCompleteRequest,
+    auth: MonitorAuthContext = Depends(require_monitor_hmac_auth),
+    db: Session = Depends(get_db),
+) -> CollectionJobResponse:
+    monitor = db.query(Monitor).filter(Monitor.monitor_uuid == auth.monitor_uuid).first()
+    if monitor is None:
+        raise HTTPException(status_code=401, detail="Unknown monitor")
+    response = complete_collection_job(db, monitor=monitor, job_id=job_id, request=payload)
     db.commit()
     return response

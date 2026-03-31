@@ -46,6 +46,18 @@ kubectl -n bakery create secret generic bakery-hmac \
 `monitor-encryption-key` is required when Bakery stores PoundCake bootstrap credentials and
 per-monitor HMAC secrets.
 
+If you want to use the Bakery operator UI or `bakeryctl`, also configure operator auth. The local
+bootstrap mode uses:
+
+```bash
+kubectl -n bakery create secret generic bakery-operator-auth \
+  --from-literal=username='<operator-username>' \
+  --from-literal=password='<operator-password>'
+```
+
+Then wire the matching `BAKERY_OPERATOR_AUTH_*` env vars through your chart overrides or secret
+mapping. OIDC and service-token flows are also supported by the operator auth endpoints.
+
 ## Minimum Override Shape
 
 `10-main-overrides.yaml`
@@ -94,7 +106,7 @@ by default.
 Override the OCI chart version when needed:
 
 ```bash
-BAKERY_CHART_VERSION="0.1.2" ./bin/install-bakery.sh --bakery-auth-secret-name bakery-hmac
+BAKERY_CHART_VERSION="0.1.3" ./bin/install-bakery.sh --bakery-auth-secret-name bakery-hmac
 ```
 
 Override the OCI chart reference when needed:
@@ -123,6 +135,13 @@ kubectl -n bakery get deploy,pods,svc,httproute
 curl -fsS https://bakery.example.com/api/v1/health
 ```
 
+Confirm the operator control-plane APIs:
+
+```bash
+curl -fsS https://bakery.example.com/api/v1/settings
+curl -fsS https://bakery.example.com/api/v1/auth/providers
+```
+
 If PoundCake is already connected, verify monitor registration and heartbeat activity:
 
 ```bash
@@ -130,6 +149,15 @@ kubectl -n bakery logs deploy/bakery-poundcake-bakery-worker --tail=100
 kubectl -n bakery exec bakery-poundcake-bakery-mariadb-0 -- \
   mariadb -uroot -p"$(kubectl -n bakery get secret bakery-poundcake-bakery-mariadb-root -o jsonpath='{.data.password}' | base64 -d)" \
   -N -e "USE bakery; SELECT monitor_id, status, last_checkin_at, route_sync_required FROM monitors;"
+```
+
+If operator auth is enabled, you can also verify the new read surfaces with:
+
+```bash
+bakeryctl --url https://bakery.example.com auth whoami
+bakeryctl --url https://bakery.example.com reports overview
+bakeryctl --url https://bakery.example.com monitors list
+bakeryctl --url https://bakery.example.com jobs list
 ```
 
 ## Live Provider Validation

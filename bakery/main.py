@@ -13,9 +13,13 @@ import structlog
 from bakery.api.communications import router as communications_router
 from bakery.config import settings
 from bakery.api.admin import router as admin_router
+from bakery.api.collection_jobs import router as collection_jobs_router
 from bakery.api.health import router as health_router
 from bakery.api.mixers import router as mixers_router
 from bakery.api.monitors import router as monitors_router
+from bakery.api.operator_auth import router as operator_auth_router
+from bakery.api.reports import router as reports_router
+from bakery.api.settings import router as settings_router
 from bakery.api.tickets import router as tickets_router
 from bakery.metrics import render_metrics
 
@@ -93,6 +97,22 @@ tags_metadata = [
         "description": "Administrative monitor bootstrap credential management endpoints.",
     },
     {
+        "name": "auth",
+        "description": "Human operator authentication, session, and RBAC management endpoints.",
+    },
+    {
+        "name": "reports",
+        "description": "Durable DB-backed operator reports for monitors, routes, providers, and backlog.",
+    },
+    {
+        "name": "collection-jobs",
+        "description": "Queue and inspect read-only PoundCake collection jobs.",
+    },
+    {
+        "name": "settings",
+        "description": "UI bootstrap settings and auth-provider discovery helpers.",
+    },
+    {
         "name": "tickets",
         "description": (
             "Legacy compatibility endpoints retained for callers that still speak the older "
@@ -165,8 +185,12 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 
 # Include routers
 app.include_router(health_router, prefix=settings.api_prefix, tags=["health"])
+app.include_router(settings_router, prefix=settings.api_prefix, tags=["settings"])
+app.include_router(operator_auth_router, prefix=settings.api_prefix, tags=["auth"])
 app.include_router(admin_router, prefix=settings.api_prefix, tags=["admin"])
 app.include_router(monitors_router, prefix=settings.api_prefix, tags=["monitors"])
+app.include_router(reports_router, prefix=settings.api_prefix, tags=["reports"])
+app.include_router(collection_jobs_router, prefix=settings.api_prefix, tags=["collection-jobs"])
 app.include_router(communications_router, prefix=settings.api_prefix, tags=["communications"])
 app.include_router(tickets_router, prefix=settings.api_prefix, tags=["tickets"])
 app.include_router(mixers_router, prefix=settings.api_prefix, tags=["mixers"])

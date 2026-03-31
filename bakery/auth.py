@@ -8,7 +8,7 @@ import secrets
 import time
 from dataclasses import dataclass
 
-from fastapi import Depends, Header, HTTPException, Request, status
+from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from bakery.config import settings
@@ -163,6 +163,28 @@ async def require_hmac_auth(
         authorization=authorization,
         x_timestamp=x_timestamp,
     )
+
+
+async def require_bootstrap_admin_access(
+    request: Request,
+    db: Session = Depends(get_db),
+    authorization: str | None = Header(default=None, alias="Authorization"),
+    x_timestamp: str | None = Header(default=None, alias="X-Timestamp"),
+    session_token: str | None = Cookie(default=None),
+) -> str:
+    if authorization and authorization.startswith("HMAC "):
+        return await require_admin_hmac_auth(
+            request=request,
+            authorization=authorization,
+            x_timestamp=x_timestamp,
+        )
+
+    from bakery.operator_auth import require_admin as require_operator_admin
+    from bakery.operator_auth import require_auth_if_enabled
+
+    context = await require_auth_if_enabled(request=request, session_token=session_token, db=db)
+    admin_context = await require_operator_admin(context=context)
+    return f"operator:{admin_context.username}"
 
 
 async def require_bootstrap_hmac_auth(

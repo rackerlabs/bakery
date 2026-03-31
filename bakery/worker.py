@@ -14,6 +14,7 @@ import structlog
 from sqlalchemy import and_, or_
 
 from bakery.api.tickets import _enqueue_ticket_action_request, create_ticket_request
+from bakery.collection_jobs import expire_collection_job_leases
 from bakery.config import settings
 from bakery.database import SessionLocal
 from bakery.formatters import provider_config_from_context, render_provider_content
@@ -759,6 +760,7 @@ def run_worker() -> None:
         poll_interval_sec=settings.worker_poll_interval_sec,
     )
     next_monitor_sweep = time.monotonic()
+    next_collection_sweep = time.monotonic()
     while True:
         if time.monotonic() >= next_monitor_sweep:
             try:
@@ -766,6 +768,21 @@ def run_worker() -> None:
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Monitor sweep failed", error=str(exc))
             next_monitor_sweep = time.monotonic() + settings.bakery_monitor_sweep_interval_sec
+
+        if time.monotonic() >= next_collection_sweep:
+            try:
+                with SessionLocal() as db:
+                    expired = expire_collection_job_leases(db)
+                    if expired:
+                        db.commit()
+                        logger.info("Collection job leases expired", count=expired)
+                    else:
+                        db.rollback()
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Collection job sweep failed", error=str(exc))
+            next_collection_sweep = (
+                time.monotonic() + settings.bakery_collection_sweep_interval_sec
+            )
 
         claimed = _claim_operations(settings.worker_batch_size)
         if not claimed:

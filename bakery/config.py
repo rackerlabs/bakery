@@ -18,6 +18,7 @@ class Settings:
         self.log_level: str = os.getenv("LOG_LEVEL", "INFO")
         self.api_prefix: str = "/api/v1"
         self.app_version: str = resolve_version("BAKERY_APP_VERSION")
+        self.instance_id: str = os.getenv("HOSTNAME", "bakery-0")
 
         # Database
         self.database_host: str = os.getenv("DATABASE_HOST", "bakery-mariadb")
@@ -86,6 +87,140 @@ class Settings:
         )
         self.bakery_monitor_sweep_interval_sec: int = int(
             os.getenv("BAKERY_MONITOR_SWEEP_INTERVAL_SEC", "5")
+        )
+        self.bakery_collection_job_lease_sec: int = int(
+            os.getenv("BAKERY_COLLECTION_JOB_LEASE_SEC", "300")
+        )
+        self.bakery_collection_sweep_interval_sec: int = int(
+            os.getenv("BAKERY_COLLECTION_SWEEP_INTERVAL_SEC", "5")
+        )
+
+        # Operator auth settings
+        self.operator_auth_enabled: bool = env_to_bool(
+            os.getenv("BAKERY_OPERATOR_AUTH_ENABLED"), default=True
+        )
+        self.operator_auth_session_timeout: int = int(
+            os.getenv("BAKERY_OPERATOR_AUTH_SESSION_TIMEOUT", "86400")
+        )
+        self.operator_auth_oidc_state_ttl: int = int(
+            os.getenv("BAKERY_OPERATOR_AUTH_OIDC_STATE_TTL", "600")
+        )
+        self.operator_auth_rbac_enabled: bool = env_to_bool(
+            os.getenv("BAKERY_OPERATOR_AUTH_RBAC_ENABLED"), default=True
+        )
+        self.operator_auth_service_token: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_SERVICE_TOKEN", ""
+        )
+
+        self.operator_auth_local_enabled: bool = env_to_bool(
+            os.getenv("BAKERY_OPERATOR_AUTH_LOCAL_ENABLED"), default=True
+        )
+        self.operator_auth_username: str = os.getenv("BAKERY_OPERATOR_AUTH_USERNAME", "")
+        self.operator_auth_password: str = os.getenv("BAKERY_OPERATOR_AUTH_PASSWORD", "")
+        self.operator_auth_dev_username: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_DEV_USERNAME", ""
+        )
+        self.operator_auth_dev_password: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_DEV_PASSWORD", ""
+        )
+
+        self.operator_auth_auth0_enabled: bool = env_to_bool(
+            os.getenv("BAKERY_OPERATOR_AUTH_AUTH0_ENABLED"), default=False
+        )
+        self.operator_auth_auth0_domain: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AUTH0_DOMAIN", ""
+        )
+        self.operator_auth_auth0_audience: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AUTH0_AUDIENCE", ""
+        )
+        self.operator_auth_auth0_scope: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AUTH0_SCOPE", "openid profile email"
+        )
+        self.operator_auth_auth0_organization: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AUTH0_ORGANIZATION", ""
+        )
+        self.operator_auth_auth0_connection: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AUTH0_CONNECTION", ""
+        )
+        self.operator_auth_auth0_username_claim: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AUTH0_USERNAME_CLAIM", "email"
+        )
+        self.operator_auth_auth0_display_name_claim: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AUTH0_DISPLAY_NAME_CLAIM", "name"
+        )
+        self.operator_auth_auth0_groups_claim: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AUTH0_GROUPS_CLAIM", "groups"
+        )
+        self.operator_auth_auth0_subject_claim: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AUTH0_SUBJECT_CLAIM", "sub"
+        )
+        self.operator_auth_auth0_ui_enabled: bool = env_to_bool(
+            os.getenv("BAKERY_OPERATOR_AUTH_AUTH0_UI_ENABLED"),
+            default=bool(os.getenv("BAKERY_OPERATOR_AUTH_AUTH0_UI_CLIENT_ID", "")),
+        )
+        self.operator_auth_auth0_ui_client_id: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AUTH0_UI_CLIENT_ID", ""
+        )
+        self.operator_auth_auth0_ui_client_secret: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AUTH0_UI_CLIENT_SECRET", ""
+        )
+        self.operator_auth_auth0_ui_callback_url: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AUTH0_UI_CALLBACK_URL", ""
+        )
+        self.operator_auth_auth0_cli_enabled: bool = env_to_bool(
+            os.getenv("BAKERY_OPERATOR_AUTH_AUTH0_CLI_ENABLED"),
+            default=bool(os.getenv("BAKERY_OPERATOR_AUTH_AUTH0_CLI_CLIENT_ID", "")),
+        )
+        self.operator_auth_auth0_cli_client_id: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AUTH0_CLI_CLIENT_ID", ""
+        )
+        self.operator_auth_auth0_cli_client_secret: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AUTH0_CLI_CLIENT_SECRET", ""
+        )
+
+        self.operator_auth_azure_ad_enabled: bool = env_to_bool(
+            os.getenv("BAKERY_OPERATOR_AUTH_AZURE_AD_ENABLED"), default=False
+        )
+        self.operator_auth_azure_ad_tenant: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AZURE_AD_TENANT", ""
+        )
+        self.operator_auth_azure_ad_audience: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AZURE_AD_AUDIENCE", ""
+        )
+        self.operator_auth_azure_ad_scope: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AZURE_AD_SCOPE", "openid profile email"
+        )
+        self.operator_auth_azure_ad_username_claim: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AZURE_AD_USERNAME_CLAIM", "preferred_username"
+        )
+        self.operator_auth_azure_ad_display_name_claim: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AZURE_AD_DISPLAY_NAME_CLAIM", "name"
+        )
+        self.operator_auth_azure_ad_groups_claim: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AZURE_AD_GROUPS_CLAIM", "groups"
+        )
+        self.operator_auth_azure_ad_subject_claim: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AZURE_AD_SUBJECT_CLAIM", "sub"
+        )
+        self.operator_auth_azure_ad_ui_enabled: bool = env_to_bool(
+            os.getenv("BAKERY_OPERATOR_AUTH_AZURE_AD_UI_ENABLED"),
+            default=bool(os.getenv("BAKERY_OPERATOR_AUTH_AZURE_AD_UI_CLIENT_ID", "")),
+        )
+        self.operator_auth_azure_ad_ui_client_id: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AZURE_AD_UI_CLIENT_ID", ""
+        )
+        self.operator_auth_azure_ad_ui_client_secret: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AZURE_AD_UI_CLIENT_SECRET", ""
+        )
+        self.operator_auth_azure_ad_ui_callback_url: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AZURE_AD_UI_CALLBACK_URL", ""
+        )
+        self.operator_auth_azure_ad_cli_enabled: bool = env_to_bool(
+            os.getenv("BAKERY_OPERATOR_AUTH_AZURE_AD_CLI_ENABLED"),
+            default=bool(os.getenv("BAKERY_OPERATOR_AUTH_AZURE_AD_CLI_CLIENT_ID", "")),
+        )
+        self.operator_auth_azure_ad_cli_client_id: str = os.getenv(
+            "BAKERY_OPERATOR_AUTH_AZURE_AD_CLI_CLIENT_ID", ""
         )
 
         # ServiceNow

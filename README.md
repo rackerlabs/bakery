@@ -9,7 +9,10 @@ GitHub, PagerDuty, Teams, and Discord.
 
 - `/api/v1/communications*` for the current provider-agnostic API
 - `/api/v1/tickets*` for the legacy compatibility surface
+- `/api/v1/reports*`, `/api/v1/collection-jobs*`, and `/api/v1/auth*` for operator workflows
 - HMAC-authenticated service-to-service access
+- DB-backed operator auth, RBAC, reporting, and collection job state
+- the `bakeryctl` CLI and the React/Vite operator UI under [`ui/`](ui/)
 - the async worker, retry, and dead-letter flow
 - the standalone Docker image, Helm chart, installer, and release pipeline
 
@@ -25,6 +28,13 @@ pip install -e ".[dev]"
 make run-api
 make run-worker
 make db-init
+```
+
+Operator surfaces:
+
+```bash
+bakeryctl --help
+cd ui && npm install && npm run dev
 ```
 
 ## Testing

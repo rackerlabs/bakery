@@ -49,6 +49,51 @@ def _routes_digest(routes: list[dict[str, Any]]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _normalize_tags(tags: list[str] | None) -> list[str]:
+    seen: dict[str, str] = {}
+    for tag in tags or []:
+        value = str(tag or "").strip()
+        if not value:
+            continue
+        seen[value.casefold()] = value
+    return sorted(seen.values(), key=str.casefold)
+
+
+def _apply_monitor_metadata(
+    monitor: Monitor,
+    *,
+    environment_label: str | None,
+    region: str | None,
+    cluster_name: str | None,
+    namespace: str | None,
+    release_name: str | None,
+    tags: list[str] | None,
+) -> None:
+    monitor.environment_label = str(environment_label or "").strip() or None
+    monitor.region = str(region or "").strip() or None
+    monitor.cluster_name = str(cluster_name or "").strip() or None
+    monitor.namespace = str(namespace or "").strip() or None
+    monitor.release_name = str(release_name or "").strip() or None
+    monitor.tags_json = _normalize_tags(tags)
+
+
+def _route_dimensions(provider_config: dict[str, Any] | None) -> tuple[str | None, str | None, str | None]:
+    config = provider_config if isinstance(provider_config, dict) else {}
+    account_number = str(
+        config.get("account_number")
+        or config.get("account")
+        or config.get("customer_number")
+        or ""
+    ).strip()
+    queue = str(config.get("queue") or config.get("queue_label") or "").strip()
+    subcategory = str(config.get("subcategory") or config.get("sub_category") or "").strip()
+    return (
+        account_number or None,
+        queue or None,
+        subcategory or None,
+    )
+
+
 def record_monitor_event(
     db: Session,
     *,
@@ -127,9 +172,24 @@ def register_monitor(
         monitor.route_sync_required = True
         monitor.updated_at = now
 
+    _apply_monitor_metadata(
+        monitor,
+        environment_label=request.environment_label,
+        region=request.region,
+        cluster_name=request.cluster_name,
+        namespace=request.namespace,
+        release_name=request.release_name,
+        tags=request.tags,
+    )
     monitor.last_seen_payload = {
         "installation_id": request.installation_id,
         "app_version": request.app_version,
+        "environment_label": monitor.environment_label,
+        "region": monitor.region,
+        "cluster_name": monitor.cluster_name,
+        "namespace": monitor.namespace,
+        "release_name": monitor.release_name,
+        "tags": list(monitor.tags_json or []),
     }
     db.flush()
     record_monitor_event(
@@ -171,6 +231,7 @@ def sync_monitor_routes(
         .delete()
     )
     for item in request.routes:
+        account_number, queue, subcategory = _route_dimensions(item.provider_config)
         db.add(
             MonitorRouteCatalogEntry(
                 monitor_uuid=monitor.monitor_uuid,
@@ -179,7 +240,11 @@ def sync_monitor_routes(
                 route_id=item.route_id,
                 label=item.label,
                 execution_target=item.execution_target,
+                provider_type=item.execution_target,
                 destination_target=item.destination_target,
+                account_number=account_number,
+                queue=queue,
+                subcategory=subcategory,
                 provider_config=item.provider_config,
                 enabled=item.enabled,
                 outage_enabled=item.outage_enabled,
@@ -218,9 +283,24 @@ def record_heartbeat(
 ) -> MonitorHeartbeatResponse:
     now = _now()
     monitor.last_checkin_at = now
+    _apply_monitor_metadata(
+        monitor,
+        environment_label=request.environment_label,
+        region=request.region,
+        cluster_name=request.cluster_name,
+        namespace=request.namespace,
+        release_name=request.release_name,
+        tags=request.tags,
+    )
     monitor.last_seen_payload = {
         "installation_id": request.installation_id,
         "app_version": request.app_version,
+        "environment_label": monitor.environment_label,
+        "region": monitor.region,
+        "cluster_name": monitor.cluster_name,
+        "namespace": monitor.namespace,
+        "release_name": monitor.release_name,
+        "tags": list(monitor.tags_json or []),
         "details": request.details,
     }
     route_sync_required = bool(monitor.route_sync_required)

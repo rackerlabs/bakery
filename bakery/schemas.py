@@ -8,6 +8,10 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel as PydanticBaseModel, ConfigDict, Field
 from shared.bakery_contract import (
+    CollectionJobClaimResponse,
+    CollectionJobCompleteRequest,
+    CollectionJobCreateRequest,
+    CollectionJobResponse,
     CommunicationAcceptedResponse,
     CommunicationCloseRequest,
     CommunicationNotifyRequest,
@@ -19,6 +23,7 @@ from shared.bakery_contract import (
     MonitorBootstrapCredentialResponse,
     MonitorHeartbeatRequest,
     MonitorHeartbeatResponse,
+    MonitorMetadata,
     MonitorRegistrationRequest,
     MonitorRegistrationResponse,
     MonitorRouteCatalogEntry,
@@ -29,6 +34,10 @@ from shared.bakery_contract import (
 __all__ = [
     "CommunicationAcceptedResponse",
     "CommunicationCloseRequest",
+    "CollectionJobClaimResponse",
+    "CollectionJobCompleteRequest",
+    "CollectionJobCreateRequest",
+    "CollectionJobResponse",
     "CommunicationNotifyRequest",
     "CommunicationOpenRequest",
     "CommunicationOperationListResponse",
@@ -38,6 +47,7 @@ __all__ = [
     "MonitorBootstrapCredentialResponse",
     "MonitorHeartbeatRequest",
     "MonitorHeartbeatResponse",
+    "MonitorMetadata",
     "MonitorRegistrationRequest",
     "MonitorRegistrationResponse",
     "MonitorRouteCatalogEntry",
@@ -198,3 +208,258 @@ class MixerValidateResponse(BaseModel):
     mixer_type: str = Field(..., description="Mixer that was validated")
     valid: bool = Field(..., description="Whether credentials are valid and connectivity works")
     message: str = Field(..., description="Human-readable validation result")
+
+
+class SessionResponse(BaseModel):
+    """Response returned after Bakery operator login."""
+
+    session_id: str
+    username: str
+    expires_at: str
+    provider: str
+    role: str
+    display_name: str | None = None
+    is_superuser: bool = False
+    permissions: list[str] = Field(default_factory=list)
+    token_type: str = "Bearer"
+
+
+class AuthLoginRequest(BaseModel):
+    """Password login request for Bakery operators."""
+
+    provider: str | None = None
+    username: str = Field(..., min_length=1, max_length=255)
+    password: str = Field(..., min_length=1, max_length=255)
+
+
+class AuthProviderResponse(BaseModel):
+    """Enabled Bakery auth provider metadata for UI and CLI discovery."""
+
+    name: str
+    label: str
+    login_mode: str
+    cli_login_mode: str
+    browser_login: bool = False
+    device_login: bool = False
+    password_login: bool = False
+
+
+class AuthMeResponse(BaseModel):
+    """Current authenticated operator context."""
+
+    username: str
+    display_name: str | None = None
+    provider: str
+    role: str
+    principal_type: str
+    principal_id: int | None = None
+    is_superuser: bool = False
+    permissions: list[str] = Field(default_factory=list)
+    groups: list[str] = Field(default_factory=list)
+    expires_at: str | None = None
+
+
+class AuthLogoutResponse(BaseModel):
+    """Logout acknowledgement."""
+
+    message: str
+
+
+class DeviceAuthorizationStartResponse(BaseModel):
+    """Device authorization bootstrap payload."""
+
+    provider: str
+    device_code: str
+    user_code: str
+    verification_uri: str
+    verification_uri_complete: str | None = None
+    expires_in: int
+    interval: int
+
+
+class DeviceAuthorizationStartRequest(BaseModel):
+    """Device authorization start request."""
+
+    provider: str | None = None
+
+
+class DeviceAuthorizationPollRequest(BaseModel):
+    """Device authorization polling request."""
+
+    provider: str | None = None
+    device_code: str = Field(..., min_length=1)
+
+
+class DeviceAuthorizationPollResponse(BaseModel):
+    """Device authorization status response."""
+
+    status: str
+    interval: int | None = None
+    detail: str | None = None
+    session: SessionResponse | None = None
+
+
+class AuthPrincipalResponse(BaseModel):
+    """Observed principal metadata for access binding management."""
+
+    id: int
+    provider: str
+    subject_id: str
+    username: str
+    display_name: str | None = None
+    principal_type: str
+    groups: list[str] = Field(default_factory=list)
+    last_seen_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+
+class AuthRoleBindingCreate(BaseModel):
+    """Create a new RBAC binding."""
+
+    provider: str
+    binding_type: str
+    role: str
+    principal_id: int | None = None
+    external_group: str | None = Field(default=None, max_length=255)
+    created_by: str | None = Field(default=None, max_length=255)
+
+
+class AuthRoleBindingUpdate(BaseModel):
+    """Update an existing RBAC binding."""
+
+    role: str | None = None
+    external_group: str | None = Field(default=None, max_length=255)
+
+
+class AuthRoleBindingResponse(BaseModel):
+    """RBAC binding record returned to operators."""
+
+    id: int
+    provider: str
+    binding_type: str
+    role: str
+    principal_id: int | None = None
+    external_group: str | None = None
+    created_by: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    principal: AuthPrincipalResponse | None = None
+
+
+class DeleteResponse(BaseModel):
+    """Simple delete acknowledgement."""
+
+    message: str
+
+
+class SettingsResponse(BaseModel):
+    """Bakery UI bootstrap settings."""
+
+    auth_enabled: bool
+    rbac_enabled: bool
+    auth_providers: list[AuthProviderResponse]
+    version: str
+
+
+class ReportOverviewResponse(BaseModel):
+    """High-level operational summary for Bakery operators."""
+
+    monitors_total: int
+    monitors_healthy: int
+    monitors_unreachable: int
+    open_tickets: int
+    queued_operations: int
+    failed_operations: int
+    dead_letter_operations: int
+    queued_collection_jobs: int
+    leased_collection_jobs: int
+    timed_out_collection_jobs: int
+
+
+class MonitorSummaryResponse(BaseModel):
+    """Monitor inventory row for reporting and drill-down."""
+
+    monitor_uuid: str
+    monitor_id: str
+    status: str
+    environment_label: str | None = None
+    region: str | None = None
+    cluster_name: str | None = None
+    namespace: str | None = None
+    release_name: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    route_sync_required: bool
+    route_count: int = 0
+    outage_route_count: int = 0
+    last_checkin_at: datetime | None = None
+    unreachable_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+    last_seen_payload: Dict[str, Any] | None = None
+
+
+class MonitorEventResponse(BaseModel):
+    """Monitor event record."""
+
+    monitor_uuid: str
+    event_type: str
+    payload: Dict[str, Any] | None = None
+    created_at: datetime
+
+
+class MonitorRouteInventoryResponse(BaseModel):
+    """Monitor route inventory row with report-friendly dimensions."""
+
+    monitor_uuid: str
+    monitor_id: str
+    environment_label: str | None = None
+    scope: str
+    owner_key: str
+    route_id: str
+    label: str
+    provider_type: str
+    execution_target: str
+    destination_target: str
+    account_number: str | None = None
+    queue: str | None = None
+    subcategory: str | None = None
+    enabled: bool
+    outage_enabled: bool
+    position: int
+    updated_at: datetime
+
+
+class ProviderAnalyticsResponse(BaseModel):
+    """Aggregated provider usage and failure metrics."""
+
+    provider_type: str
+    route_count: int
+    ticket_count: int
+    open_ticket_count: int
+    failed_operation_count: int
+    dead_letter_count: int
+
+
+class OperationAnalyticsResponse(BaseModel):
+    """Aggregated Bakery operation queue metrics."""
+
+    provider_type: str
+    action: str
+    status: str
+    count: int
+
+
+class TicketBacklogResponse(BaseModel):
+    """Ticket backlog row for open or errored Bakery communications."""
+
+    ticket_id: str
+    provider_type: str
+    provider_ticket_id: str | None = None
+    monitor_uuid: str | None = None
+    monitor_id: str | None = None
+    environment_label: str | None = None
+    state: str
+    latest_error: str | None = None
+    created_at: datetime
+    updated_at: datetime

@@ -320,6 +320,12 @@ class Monitor(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="healthy", index=True)
     route_catalog_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     route_sync_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    environment_label: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    region: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    cluster_name: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    namespace: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    release_name: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    tags_json: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     last_checkin_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     unreachable_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_seen_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
@@ -355,7 +361,11 @@ class MonitorRouteCatalogEntry(Base):
     route_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     label: Mapped[str] = mapped_column(String(255), nullable=False)
     execution_target: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    provider_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     destination_target: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    account_number: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    queue: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    subcategory: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     provider_config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     outage_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -414,4 +424,137 @@ class MonitorEvent(Base):
     payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True
+    )
+
+
+class AuthPrincipal(Base):
+    """Observed human principal used for Bakery RBAC bindings."""
+
+    __tablename__ = "auth_principals"
+    __table_args__ = (
+        UniqueConstraint("provider", "subject_id", name="uq_auth_principals_provider_subject"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    provider: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    subject_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    username: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    principal_type: Mapped[str] = mapped_column(String(32), nullable=False, default="user")
+    groups_json: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class AuthRoleBinding(Base):
+    """RBAC binding matching a user or group to a Bakery role."""
+
+    __tablename__ = "auth_role_bindings"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    provider: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    binding_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    principal_id: Mapped[int | None] = mapped_column(
+        ForeignKey("auth_principals.id"),
+        nullable=True,
+        index=True,
+    )
+    external_group: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class AuthSession(Base):
+    """Browser or CLI session persisted in Bakery MariaDB."""
+
+    __tablename__ = "auth_sessions"
+    __table_args__ = (UniqueConstraint("session_id", name="uq_auth_sessions_session_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    subject_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    username: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    role: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    principal_type: Mapped[str] = mapped_column(String(32), nullable=False, default="user")
+    principal_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    is_superuser: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    groups_json: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    permissions_json: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class AuthState(Base):
+    """Short-lived OIDC state stored in MariaDB for Bakery operator auth."""
+
+    __tablename__ = "auth_state"
+    __table_args__ = (UniqueConstraint("kind", "state_key", name="uq_auth_state_kind_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    kind: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    state_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class CollectionJob(Base):
+    """Queued, leased, or completed read-only collection job for a PoundCake monitor."""
+
+    __tablename__ = "collection_jobs"
+    __table_args__ = (UniqueConstraint("job_id", name="uq_collection_jobs_job_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    job_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    monitor_uuid: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    monitor_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    collector_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued", index=True)
+    parameters: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requested_by: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )

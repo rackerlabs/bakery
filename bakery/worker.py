@@ -41,6 +41,12 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def _is_non_empty(value: Any) -> bool:
     if value is None:
         return False
@@ -470,7 +476,7 @@ def _build_dry_run_result(
 
 
 def _monitor_threshold_deadline(monitor: Monitor) -> datetime:
-    baseline = monitor.last_checkin_at or monitor.created_at
+    baseline = _as_utc(monitor.last_checkin_at or monitor.created_at)
     return baseline + timedelta(
         seconds=settings.bakery_monitor_heartbeat_interval_sec
         * settings.bakery_monitor_miss_threshold

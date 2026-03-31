@@ -1,4 +1,8 @@
+from datetime import datetime, timezone
 from pathlib import Path
+
+from bakery.models import Monitor
+from bakery.worker import _monitor_threshold_deadline
 
 
 def _worker_source() -> str:
@@ -40,3 +44,22 @@ def test_rackspace_core_close_payload_defaults_to_confirm_solved() -> None:
 def test_worker_uses_renderer_layer_for_provider_payloads() -> None:
     source = _worker_source()
     assert "render_provider_content(provider, action, payload)" in source
+
+
+def test_monitor_threshold_deadline_normalizes_naive_datetimes() -> None:
+    monitor = Monitor(
+        monitor_uuid="monitor-1",
+        monitor_id="example-namespace/example-release",
+        key_id="active",
+        encrypted_secret="secret",
+        status="healthy",
+        route_sync_required=False,
+        created_at=datetime(2026, 3, 31, 16, 0, 0),
+        updated_at=datetime(2026, 3, 31, 16, 0, 0),
+    )
+    monitor.last_checkin_at = datetime(2026, 3, 31, 16, 1, 0)
+
+    deadline = _monitor_threshold_deadline(monitor)
+
+    assert deadline.tzinfo == timezone.utc
+    assert deadline.isoformat() == "2026-03-31T16:03:30+00:00"

@@ -38,7 +38,9 @@ async def register_monitor_identity(
     db: Session = Depends(get_db),
 ) -> MonitorRegistrationResponse:
     if payload.monitor_id != bootstrap.monitor_id:
-        raise HTTPException(status_code=401, detail="monitor_id does not match bootstrap credential")
+        raise HTTPException(
+            status_code=401, detail="monitor_id does not match bootstrap credential"
+        )
     response = register_monitor(db, request=payload)
     db.commit()
     return response

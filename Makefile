@@ -4,13 +4,15 @@
 # |  __/ (_) | |_| | | | | (_| | |__| (_| |   <  __/
 # |_|   \___/ \__,_|_| |_|\__,_|\____\__,_|_|\_\___|
 #
-.PHONY: help install dev-install test lint format clean run-api run-worker db-init
+.PHONY: help install dev-install install-hooks test testall lint format clean run-api run-worker db-init
 
 help:
 	@echo "Available commands:"
 	@echo "  make install      - Install production dependencies"
-	@echo "  make dev-install  - Install development dependencies"
+	@echo "  make dev-install  - Install development dependencies and git hooks"
+	@echo "  make install-hooks - Install local pre-commit and pre-push hooks"
 	@echo "  make test         - Run Bakery tests"
+	@echo "  make testall      - Run the local pre-push test suite"
 	@echo "  make lint         - Run linters (ruff, mypy)"
 	@echo "  make format       - Format code with black"
 	@echo "  make clean        - Clean generated files"
@@ -23,9 +25,18 @@ install:
 
 dev-install:
 	pip install -e ".[dev]"
+	pre-commit install
+	pre-commit install --hook-type pre-push
+
+install-hooks:
+	pre-commit install
+	pre-commit install --hook-type pre-push
 
 test:
 	pytest -m "not integration" tests/ -v --cov=bakery --cov-report=html
+
+testall:
+	./bin/testall.sh
 
 lint:
 	ruff check bakery shared tests

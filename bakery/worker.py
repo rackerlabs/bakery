@@ -780,9 +780,7 @@ def run_worker() -> None:
                         db.rollback()
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Collection job sweep failed", error=str(exc))
-            next_collection_sweep = (
-                time.monotonic() + settings.bakery_collection_sweep_interval_sec
-            )
+            next_collection_sweep = time.monotonic() + settings.bakery_collection_sweep_interval_sec
 
         claimed = _claim_operations(settings.worker_batch_size)
         if not claimed:

@@ -77,13 +77,12 @@ def _apply_monitor_metadata(
     monitor.tags_json = _normalize_tags(tags)
 
 
-def _route_dimensions(provider_config: dict[str, Any] | None) -> tuple[str | None, str | None, str | None]:
+def _route_dimensions(
+    provider_config: dict[str, Any] | None,
+) -> tuple[str | None, str | None, str | None]:
     config = provider_config if isinstance(provider_config, dict) else {}
     account_number = str(
-        config.get("account_number")
-        or config.get("account")
-        or config.get("customer_number")
-        or ""
+        config.get("account_number") or config.get("account") or config.get("customer_number") or ""
     ).strip()
     queue = str(config.get("queue") or config.get("queue_label") or "").strip()
     subcategory = str(config.get("subcategory") or config.get("sub_category") or "").strip()
@@ -305,7 +304,9 @@ def record_heartbeat(
     }
     route_sync_required = bool(monitor.route_sync_required)
     if request.catalog_hash:
-        route_sync_required = route_sync_required or request.catalog_hash != monitor.route_catalog_hash
+        route_sync_required = (
+            route_sync_required or request.catalog_hash != monitor.route_catalog_hash
+        )
     monitor.updated_at = now
     db.flush()
     return MonitorHeartbeatResponse(

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime
+from typing import Any, TypeVar, cast
 
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Query, Session
@@ -27,19 +28,22 @@ from bakery.schemas import (
     TicketBacklogResponse,
 )
 
+QueryT = TypeVar("QueryT", bound=Query[Any])
+
 
 def _apply_time_range(
-    query: Query,
-    column,
+    query: QueryT,
+    column: Any,
     *,
     start_at: datetime | None,
     end_at: datetime | None,
-) -> Query:
+) -> QueryT:
+    filtered_query: Query[Any] = query
     if start_at is not None:
-        query = query.filter(column >= start_at)
+        filtered_query = filtered_query.filter(column >= start_at)
     if end_at is not None:
-        query = query.filter(column <= end_at)
-    return query
+        filtered_query = filtered_query.filter(column <= end_at)
+    return cast(QueryT, filtered_query)
 
 
 def _monitor_scope_query(
@@ -123,12 +127,16 @@ def report_overview(
         end_at=end_at,
     )
 
-    operation_query = db.query(TicketOperation).join(
-        Ticket,
-        Ticket.internal_ticket_id == TicketOperation.internal_ticket_id,
-    ).join(
-        monitor_ids,
-        monitor_ids.c.monitor_uuid == Ticket.monitor_uuid,
+    operation_query = (
+        db.query(TicketOperation)
+        .join(
+            Ticket,
+            Ticket.internal_ticket_id == TicketOperation.internal_ticket_id,
+        )
+        .join(
+            monitor_ids,
+            monitor_ids.c.monitor_uuid == Ticket.monitor_uuid,
+        )
     )
     operation_query = _apply_time_range(
         operation_query,
@@ -190,14 +198,11 @@ def list_monitors(
         .subquery()
     )
 
-    query = (
-        db.query(
-            Monitor,
-            func.coalesce(route_counts.c.route_count, 0),
-            func.coalesce(route_counts.c.outage_route_count, 0),
-        )
-        .outerjoin(route_counts, route_counts.c.monitor_uuid == Monitor.monitor_uuid)
-    )
+    query = db.query(
+        Monitor,
+        func.coalesce(route_counts.c.route_count, 0),
+        func.coalesce(route_counts.c.outage_route_count, 0),
+    ).outerjoin(route_counts, route_counts.c.monitor_uuid == Monitor.monitor_uuid)
     if monitor_uuid:
         query = query.filter(Monitor.monitor_uuid == monitor_uuid)
     if environment_label:
@@ -409,20 +414,19 @@ def provider_analytics(
         ticket_query = ticket_query.filter(Ticket.id == -1)
     if provider_type:
         ticket_query = ticket_query.filter(Ticket.provider_type == provider_type)
-    ticket_query = _apply_time_range(ticket_query, Ticket.updated_at, start_at=start_at, end_at=end_at)
+    ticket_query = _apply_time_range(
+        ticket_query, Ticket.updated_at, start_at=start_at, end_at=end_at
+    )
     ticket_query = ticket_query.group_by(Ticket.provider_type)
     for provider, total, open_count in ticket_query.all():
         provider_rows[str(provider)]["ticket_count"] = int(total or 0)
         provider_rows[str(provider)]["open_ticket_count"] = int(open_count or 0)
 
-    operation_query = (
-        db.query(
-            Ticket.provider_type,
-            TicketOperation.status,
-            func.count(TicketOperation.id),
-        )
-        .join(Ticket, Ticket.internal_ticket_id == TicketOperation.internal_ticket_id)
-    )
+    operation_query = db.query(
+        Ticket.provider_type,
+        TicketOperation.status,
+        func.count(TicketOperation.id),
+    ).join(Ticket, Ticket.internal_ticket_id == TicketOperation.internal_ticket_id)
     if monitor_ids:
         operation_query = operation_query.filter(Ticket.monitor_uuid.in_(monitor_ids))
     elif any([monitor_uuid, environment_label, provider_type, account_number]):
@@ -466,15 +470,12 @@ def operation_analytics(
         provider_type=provider_type,
         account_number=account_number,
     )
-    query = (
-        db.query(
-            Ticket.provider_type,
-            TicketOperation.action,
-            TicketOperation.status,
-            func.count(TicketOperation.id),
-        )
-        .join(Ticket, Ticket.internal_ticket_id == TicketOperation.internal_ticket_id)
-    )
+    query = db.query(
+        Ticket.provider_type,
+        TicketOperation.action,
+        TicketOperation.status,
+        func.count(TicketOperation.id),
+    ).join(Ticket, Ticket.internal_ticket_id == TicketOperation.internal_ticket_id)
     if monitor_ids:
         query = query.filter(Ticket.monitor_uuid.in_(monitor_ids))
     elif any([monitor_uuid, environment_label, provider_type, account_number]):
@@ -484,7 +485,9 @@ def operation_analytics(
     query = _apply_time_range(query, TicketOperation.created_at, start_at=start_at, end_at=end_at)
     rows = (
         query.group_by(Ticket.provider_type, TicketOperation.action, TicketOperation.status)
-        .order_by(Ticket.provider_type.asc(), TicketOperation.action.asc(), TicketOperation.status.asc())
+        .order_by(
+            Ticket.provider_type.asc(), TicketOperation.action.asc(), TicketOperation.status.asc()
+        )
         .all()
     )
     return [
@@ -534,10 +537,7 @@ def ticket_backlog(
     query = query.filter(or_(Ticket.state != "closed", Ticket.latest_error.is_not(None)))
     query = _apply_time_range(query, Ticket.updated_at, start_at=start_at, end_at=end_at)
     rows = (
-        query.order_by(Ticket.updated_at.desc(), Ticket.id.desc())
-        .limit(limit)
-        .offset(offset)
-        .all()
+        query.order_by(Ticket.updated_at.desc(), Ticket.id.desc()).limit(limit).offset(offset).all()
     )
     return [
         TicketBacklogResponse(

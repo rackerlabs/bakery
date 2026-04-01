@@ -122,7 +122,9 @@ def get_collection_job(db: Session, *, job_id: str) -> CollectionJob:
     expire_collection_job_leases(db)
     job = db.query(CollectionJob).filter(CollectionJob.job_id == job_id).first()
     if job is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection job not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Collection job not found"
+        )
     return job
 
 
@@ -146,7 +148,9 @@ def claim_next_collection_job(
         return CollectionJobClaimResponse(available=False, job=None)
 
     job.status = "leased"
-    job.lease_expires_at = now + timedelta(seconds=max(settings.bakery_collection_job_lease_sec, 30))
+    job.lease_expires_at = now + timedelta(
+        seconds=max(settings.bakery_collection_job_lease_sec, 30)
+    )
     job.started_at = now
     job.updated_at = now
     db.flush()
@@ -170,7 +174,9 @@ def complete_collection_job(
         .first()
     )
     if job is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection job not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Collection job not found"
+        )
     if job.status != "leased":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

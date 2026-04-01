@@ -259,7 +259,9 @@ def _local_superuser_credentials() -> tuple[str, str] | None:
     return None
 
 
-async def authenticate_password_provider(provider: str, username: str, password: str) -> AuthIdentity:
+async def authenticate_password_provider(
+    provider: str, username: str, password: str
+) -> AuthIdentity:
     normalized = str(provider or "").strip().lower()
     if normalized != "local":
         raise ProviderConfigurationError(f"Provider '{provider}' does not support password login")
@@ -419,7 +421,9 @@ def _azure_ad_identity_from_claims(
     token_tenant = str(claims.get("tid") or "").strip()
     if re.fullmatch(r"[0-9a-fA-F-]{36}", configured_tenant) and token_tenant:
         if token_tenant.casefold() != configured_tenant.casefold():
-            raise InvalidCredentialsError("Azure AD token tenant did not match the configured tenant")
+            raise InvalidCredentialsError(
+                "Azure AD token tenant did not match the configured tenant"
+            )
 
     username = str(
         claims.get(settings.operator_auth_azure_ad_username_claim)
@@ -980,9 +984,7 @@ def put_state(
     ttl_seconds: int,
 ) -> None:
     existing = (
-        db.query(AuthState)
-        .filter(AuthState.kind == kind, AuthState.state_key == state_key)
-        .first()
+        db.query(AuthState).filter(AuthState.kind == kind, AuthState.state_key == state_key).first()
     )
     now = utc_now()
     expires_at = now + timedelta(seconds=ttl_seconds)
@@ -1003,9 +1005,7 @@ def put_state(
 
 def pop_state(db: Session, *, kind: str, state_key: str) -> dict[str, Any] | None:
     row = (
-        db.query(AuthState)
-        .filter(AuthState.kind == kind, AuthState.state_key == state_key)
-        .first()
+        db.query(AuthState).filter(AuthState.kind == kind, AuthState.state_key == state_key).first()
     )
     if row is None:
         return None

@@ -34,7 +34,9 @@ def upgrade() -> None:
     )
     op.execute("UPDATE monitors SET tags_json = '[]' WHERE tags_json IS NULL")
     op.alter_column("monitors", "tags_json", existing_type=mysql.JSON(), nullable=False)
-    op.create_index("ix_monitors_environment_label", "monitors", ["environment_label"], unique=False)
+    op.create_index(
+        "ix_monitors_environment_label", "monitors", ["environment_label"], unique=False
+    )
     op.create_index("ix_monitors_region", "monitors", ["region"], unique=False)
     op.create_index("ix_monitors_cluster_name", "monitors", ["cluster_name"], unique=False)
     op.create_index("ix_monitors_namespace", "monitors", ["namespace"], unique=False)

@@ -21,8 +21,12 @@ GitHub, PagerDuty, Teams, and Discord.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+make dev-install
 ```
+
+`make dev-install` installs Bakery's development dependencies plus the local `pre-commit` and
+`pre-push` hooks. The `pre-push` hook runs [`bin/testall.sh`](bin/testall.sh), which mirrors the
+repo's local push gate by running `pre-commit`, `mypy`, and unit tests before `git push` completes.
 
 ```bash
 make run-api
@@ -40,12 +44,13 @@ cd ui && npm install && npm run dev
 ## Testing
 
 ```bash
-pre-commit run --all-files
-mypy bakery shared
-pytest -m "not integration" tests/ -v --cov=bakery --cov=shared --cov-report=xml
+make testall
 helm lint ./helm
 helm unittest ./helm --file 'tests/unittest/*_test.yaml'
 ```
+
+For ad hoc runs, `make testall` uses [`bin/testall.sh`](bin/testall.sh), the same script used by
+the local `pre-push` hook.
 
 ## Artifacts
 

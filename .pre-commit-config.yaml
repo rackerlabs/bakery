@@ -29,21 +29,9 @@ repos:
 
   - repo: local
     hooks:
-      - id: mypy
-        name: mypy
-        entry: mypy bakery shared
-        language: system
-        pass_filenames: false
-        stages: [pre-push]
-      - id: pyright
-        name: pyright
-        entry: pyright
-        language: system
-        pass_filenames: false
-        stages: [pre-push]
-      - id: pytest-unit
-        name: pytest (unit)
-        entry: pytest -m "not integration" tests/ -q
+      - id: bakery-testall
+        name: bakery pre-push checks
+        entry: ./bin/testall.sh --hook-run
         language: system
         pass_filenames: false
         stages: [pre-push]

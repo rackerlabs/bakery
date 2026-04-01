@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import secrets
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -37,7 +37,6 @@ from bakery.operator_auth import (
     provider_label,
     put_state,
     require_admin,
-    require_auth_if_enabled,
     require_reader,
     start_device_authorization,
     update_role_binding,
@@ -182,7 +181,9 @@ def _resolve_sso_provider(requested_provider: str | None, *, mode: str) -> str:
     raise HTTPException(status_code=404, detail=f"No {capability} providers are enabled")
 
 
-def _persist_session(request: Request, response: Response, db: Session, context: AuthContext) -> SessionResponse:
+def _persist_session(
+    request: Request, response: Response, db: Session, context: AuthContext
+) -> SessionResponse:
     stored = create_session(db, context, ttl_seconds=settings.operator_auth_session_timeout)
     if not stored.session_id:
         raise HTTPException(status_code=500, detail="Could not create session")
@@ -220,7 +221,9 @@ async def login(
         else:
             raise HTTPException(status_code=400, detail="provider is required")
     try:
-        identity = await authenticate_password_provider(provider, payload.username, payload.password)
+        identity = await authenticate_password_provider(
+            provider, payload.username, payload.password
+        )
         context = build_login_context(db, identity)
         session = _persist_session(request, response, db, context)
         db.commit()
@@ -411,7 +414,9 @@ async def auth_principals(
 ) -> list[AuthPrincipalResponse]:
     return [
         _principal_response(item)
-        for item in list_principals(db, provider=provider, search=search, limit=limit, offset=offset)
+        for item in list_principals(
+            db, provider=provider, search=search, limit=limit, offset=offset
+        )
     ]
 
 

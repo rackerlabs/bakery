@@ -108,28 +108,20 @@ class Settings:
         self.operator_auth_rbac_enabled: bool = env_to_bool(
             os.getenv("BAKERY_OPERATOR_AUTH_RBAC_ENABLED"), default=True
         )
-        self.operator_auth_service_token: str = os.getenv(
-            "BAKERY_OPERATOR_AUTH_SERVICE_TOKEN", ""
-        )
+        self.operator_auth_service_token: str = os.getenv("BAKERY_OPERATOR_AUTH_SERVICE_TOKEN", "")
 
         self.operator_auth_local_enabled: bool = env_to_bool(
             os.getenv("BAKERY_OPERATOR_AUTH_LOCAL_ENABLED"), default=True
         )
         self.operator_auth_username: str = os.getenv("BAKERY_OPERATOR_AUTH_USERNAME", "")
         self.operator_auth_password: str = os.getenv("BAKERY_OPERATOR_AUTH_PASSWORD", "")
-        self.operator_auth_dev_username: str = os.getenv(
-            "BAKERY_OPERATOR_AUTH_DEV_USERNAME", ""
-        )
-        self.operator_auth_dev_password: str = os.getenv(
-            "BAKERY_OPERATOR_AUTH_DEV_PASSWORD", ""
-        )
+        self.operator_auth_dev_username: str = os.getenv("BAKERY_OPERATOR_AUTH_DEV_USERNAME", "")
+        self.operator_auth_dev_password: str = os.getenv("BAKERY_OPERATOR_AUTH_DEV_PASSWORD", "")
 
         self.operator_auth_auth0_enabled: bool = env_to_bool(
             os.getenv("BAKERY_OPERATOR_AUTH_AUTH0_ENABLED"), default=False
         )
-        self.operator_auth_auth0_domain: str = os.getenv(
-            "BAKERY_OPERATOR_AUTH_AUTH0_DOMAIN", ""
-        )
+        self.operator_auth_auth0_domain: str = os.getenv("BAKERY_OPERATOR_AUTH_AUTH0_DOMAIN", "")
         self.operator_auth_auth0_audience: str = os.getenv(
             "BAKERY_OPERATOR_AUTH_AUTH0_AUDIENCE", ""
         )

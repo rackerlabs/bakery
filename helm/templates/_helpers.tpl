@@ -15,6 +15,10 @@
 {{- end -}}
 {{- end -}}
 
+{{- define "bakery.uiFullname" -}}
+{{- printf "%s-ui" (include "bakery.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
 {{- define "bakery.labels" -}}
 helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
 app.kubernetes.io/name: {{ include "bakery.name" . }}
@@ -87,6 +91,24 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- end -}}
 
+{{- define "bakery.uiImageVersion" -}}
+{{- if .Values.bakery.ui.image.tag -}}
+{{- .Values.bakery.ui.image.tag -}}
+{{- else -}}
+{{- .Chart.AppVersion -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "bakery.uiImageRef" -}}
+{{- $repo := .Values.bakery.ui.image.repository -}}
+{{- $digest := .Values.bakery.ui.image.digest | default "" -}}
+{{- if $digest -}}
+{{ printf "%s@%s" $repo $digest }}
+{{- else -}}
+{{ printf "%s:%s" $repo (include "bakery.uiImageVersion" .) }}
+{{- end -}}
+{{- end -}}
+
 {{- define "bakery.pullSecrets" -}}
 {{- $pullSecrets := .Values.bakery.image.pullSecrets | default list -}}
 {{- if gt (len $pullSecrets) 0 }}
@@ -129,6 +151,11 @@ bakery.rackerlabs.com/log-role: "api"
 {{- define "bakery.logRoleWorker" -}}
 bakery.rackerlabs.com/log-subgroup: "app"
 bakery.rackerlabs.com/log-role: "worker"
+{{- end -}}
+
+{{- define "bakery.logRoleUi" -}}
+bakery.rackerlabs.com/log-subgroup: "app"
+bakery.rackerlabs.com/log-role: "ui"
 {{- end -}}
 
 {{- define "bakery.logRoleInfra" -}}

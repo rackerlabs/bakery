@@ -90,8 +90,14 @@ Verify Bakery before touching PoundCake:
 
 ```bash
 kubectl -n bakery rollout status deploy/bakery-poundcake-bakery --timeout=300s
+kubectl -n bakery rollout status deploy/bakery-poundcake-bakery-ui --timeout=300s
 kubectl -n bakery rollout status deploy/bakery-poundcake-bakery-worker --timeout=300s
+curl -fsS https://bakery.example.com/ | grep -q "Bakery Console"
 curl -fsS https://bakery.example.com/api/v1/health
+curl -fsS https://bakery.example.com/docs > /dev/null
+curl -fsS https://bakery.example.com/redoc > /dev/null
+curl -fsS https://bakery.example.com/openapi.json > /dev/null
+curl -fsS https://bakery.example.com/metrics > /dev/null
 ```
 
 ## Bootstrap Credential

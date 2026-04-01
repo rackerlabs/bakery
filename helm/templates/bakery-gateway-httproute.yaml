@@ -27,8 +27,43 @@ spec:
   - matches:
     - path:
         type: PathPrefix
-        value: /
+        value: /api
     backendRefs:
     - name: {{ include "bakery.fullname" . }}
       port: {{ .Values.bakery.service.port }}
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /docs
+    backendRefs:
+    - name: {{ include "bakery.fullname" . }}
+      port: {{ .Values.bakery.service.port }}
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /redoc
+    backendRefs:
+    - name: {{ include "bakery.fullname" . }}
+      port: {{ .Values.bakery.service.port }}
+  - matches:
+    - path:
+        type: Exact
+        value: /openapi.json
+    backendRefs:
+    - name: {{ include "bakery.fullname" . }}
+      port: {{ .Values.bakery.service.port }}
+  - matches:
+    - path:
+        type: Exact
+        value: /metrics
+    backendRefs:
+    - name: {{ include "bakery.fullname" . }}
+      port: {{ .Values.bakery.service.port }}
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: {{ include "bakery.uiFullname" . }}
+      port: {{ .Values.bakery.ui.service.port }}
 {{- end }}

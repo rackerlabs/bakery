@@ -124,6 +124,7 @@ Wait for rollout:
 
 ```bash
 kubectl -n bakery rollout status deploy/bakery-poundcake-bakery --timeout=300s
+kubectl -n bakery rollout status deploy/bakery-poundcake-bakery-ui --timeout=300s
 kubectl -n bakery rollout status deploy/bakery-poundcake-bakery-worker --timeout=300s
 ```
 
@@ -132,12 +133,17 @@ Confirm release state:
 ```bash
 helm ls -n bakery
 kubectl -n bakery get deploy,pods,svc,httproute
+curl -fsS https://bakery.example.com/ | grep -q "Bakery Console"
 curl -fsS https://bakery.example.com/api/v1/health
 ```
 
 Confirm the operator control-plane APIs:
 
 ```bash
+curl -fsS https://bakery.example.com/docs > /dev/null
+curl -fsS https://bakery.example.com/redoc > /dev/null
+curl -fsS https://bakery.example.com/openapi.json > /dev/null
+curl -fsS https://bakery.example.com/metrics > /dev/null
 curl -fsS https://bakery.example.com/api/v1/settings
 curl -fsS https://bakery.example.com/api/v1/auth/providers
 ```
@@ -159,6 +165,9 @@ bakeryctl --url https://bakery.example.com reports overview
 bakeryctl --url https://bakery.example.com monitors list
 bakeryctl --url https://bakery.example.com jobs list
 ```
+
+Open `https://bakery.example.com/`, sign in through the configured operator auth flow, and confirm
+the browser lands back on `/` with the Bakery UI loaded.
 
 ## Live Provider Validation
 

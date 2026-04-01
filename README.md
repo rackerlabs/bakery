@@ -14,7 +14,7 @@ GitHub, PagerDuty, Teams, and Discord.
 - DB-backed operator auth, RBAC, reporting, and collection job state
 - the `bakeryctl` CLI and the React/Vite operator UI under [`ui/`](ui/)
 - the async worker, retry, and dead-letter flow
-- the standalone Docker image, Helm chart, installer, and release pipeline
+- the standalone Docker images, Helm chart, installer, and release pipeline
 
 ## Local Development
 
@@ -49,7 +49,7 @@ helm unittest ./helm --file 'tests/unittest/*_test.yaml'
 
 ## Artifacts
 
-- Docker image: `ghcr.io/rackerlabs/bakery`
+- Docker images: `ghcr.io/rackerlabs/bakery`, `ghcr.io/rackerlabs/bakery-ui`
 - Helm chart: `bakery`
 
 ## Install

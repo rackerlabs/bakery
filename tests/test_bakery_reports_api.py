@@ -353,7 +353,9 @@ def test_monitor_detail_endpoint_returns_recent_activity_and_latest_successes(
         "ticket_context",
     }
     latest_diagnostics = next(
-        job for job in payload["latest_successful_jobs"] if job["collector_type"] == "monitor_diagnostics"
+        job
+        for job in payload["latest_successful_jobs"]
+        if job["collector_type"] == "monitor_diagnostics"
     )
     assert latest_diagnostics["job_id"] == "job-monitor-new"
     assert payload["operation_analytics"][0]["status"] == "failed"

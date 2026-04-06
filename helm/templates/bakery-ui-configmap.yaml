@@ -1,0 +1,15 @@
+{{- if .Values.bakery.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bakery.uiFullname" . }}-runtime
+  labels:
+    {{- include "bakery.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+data:
+  config.js: |
+    window.__BAKERY_UI_CONFIG__ = Object.freeze({
+      publicUrl: {{ .Values.bakery.ui.publicUrl | default "" | toJson }},
+      apiBaseUrl: {{ .Values.bakery.ui.apiBaseUrl | default "" | toJson }},
+    });
+{{- end }}

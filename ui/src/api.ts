@@ -8,6 +8,7 @@ import type {
   SettingsResponse,
   BacklogRow,
 } from "./contracts";
+import { buildApiUrl, usesExternalApiBaseUrl } from "./config";
 
 export class ApiError extends Error {
   status: number;
@@ -21,8 +22,8 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, {
-    credentials: "same-origin",
+  const response = await fetch(buildApiUrl(path), {
+    credentials: usesExternalApiBaseUrl() ? "include" : "same-origin",
     headers: {
       "Content-Type": "application/json",
       ...(init.headers || {}),

@@ -3,9 +3,31 @@
 
 import os
 from typing import Optional
+from urllib.parse import urlsplit, urlunsplit
 
 from shared.env import env_to_bool
 from shared.version import resolve_version
+
+
+def normalize_external_url(value: str) -> str:
+    """Normalize a configured external URL for safe equality checks."""
+    trimmed = str(value or "").strip()
+    if not trimmed:
+        return ""
+    parsed = urlsplit(trimmed)
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+    path = parsed.path.rstrip("/")
+    return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), path, "", ""))
+
+
+def external_url_origin(value: str) -> str:
+    """Return only the origin portion of a configured external URL."""
+    normalized = normalize_external_url(value)
+    if not normalized:
+        return ""
+    parsed = urlsplit(normalized)
+    return urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
 
 
 class Settings:
@@ -109,6 +131,7 @@ class Settings:
             os.getenv("BAKERY_OPERATOR_AUTH_RBAC_ENABLED"), default=True
         )
         self.operator_auth_service_token: str = os.getenv("BAKERY_OPERATOR_AUTH_SERVICE_TOKEN", "")
+        self.ui_public_url: str = os.getenv("BAKERY_UI_PUBLIC_URL", "").strip()
 
         self.operator_auth_local_enabled: bool = env_to_bool(
             os.getenv("BAKERY_OPERATOR_AUTH_LOCAL_ENABLED"), default=True
@@ -261,6 +284,11 @@ class Settings:
             f"mysql+pymysql://{self.database_user}:{self.database_password}"
             f"@{self.database_host}:{self.database_port}/{self.database_name}"
         )
+
+    @property
+    def ui_public_origin(self) -> str:
+        """Return the configured UI origin for credentialed CORS."""
+        return external_url_origin(self.ui_public_url)
 
 
 # Global settings instance

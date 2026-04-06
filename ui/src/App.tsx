@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 
 import { ApiError, api } from "./api";
+import { buildAuthHref, buildLoginReturnTarget } from "./config";
 import type {
   AuthMeResponse,
   CollectionJob,
@@ -107,7 +108,10 @@ function LoginScreen({
               <a
                 key={item.name}
                 className="provider-link"
-                href={`/api/v1/auth/oidc/login?provider=${encodeURIComponent(item.name)}&next=/`}
+                href={buildAuthHref("/api/v1/auth/oidc/login", {
+                  provider: item.name,
+                  next: buildLoginReturnTarget(),
+                })}
               >
                 Continue with {item.label}
               </a>

@@ -34,9 +34,13 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].ports[0].containerPort
           value: 8080
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].mountPath
+          value: /app/runtime
+      - equal:
+          path: spec.template.spec.volumes[0].configMap.name
+          value: bakery-ui-runtime
       - isNull:
           path: spec.template.spec.serviceAccountName
       - isNull:
           path: spec.template.spec.initContainers[0]
-      - isNull:
-          path: spec.template.spec.volumes[0]

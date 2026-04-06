@@ -1,0 +1,54 @@
+suite: bakery-ui-gateway-httproute
+templates:
+  - templates/bakery-ui-gateway-httproute.yaml
+tests:
+  - it: renders a dedicated ui route on its own gateway
+    release:
+      name: bakery
+      namespace: bakery
+    set:
+      bakery.enabled: true
+      bakery.ui.gateway.enabled: true
+      bakery.ui.gateway.gatewayName: bakery-ui-gateway
+      bakery.ui.gateway.gatewayNamespace: envoy-gateway
+      bakery.ui.gateway.listener.name: bakery-ui-https
+      bakery.ui.gateway.hostnames[0]: bakery-ui.example.net
+      bakery.ui.gateway.annotations.owner: platform
+      bakery.ui.publicUrl: https://bakery-ui.example.net
+      bakery.ui.apiBaseUrl: https://bakery.example.com
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: kind
+          value: HTTPRoute
+      - equal:
+          path: metadata.name
+          value: bakery-ui-httproute
+      - equal:
+          path: metadata.annotations.owner
+          value: platform
+      - equal:
+          path: spec.parentRefs[0].name
+          value: bakery-ui-gateway
+      - equal:
+          path: spec.parentRefs[0].namespace
+          value: envoy-gateway
+      - equal:
+          path: spec.parentRefs[0].sectionName
+          value: bakery-ui-https
+      - equal:
+          path: spec.hostnames[0]
+          value: bakery-ui.example.net
+      - equal:
+          path: spec.rules[0].matches[0].path.type
+          value: PathPrefix
+      - equal:
+          path: spec.rules[0].matches[0].path.value
+          value: /
+      - equal:
+          path: spec.rules[0].backendRefs[0].name
+          value: bakery-ui
+      - equal:
+          path: spec.rules[0].backendRefs[0].port
+          value: 8080

@@ -1,0 +1,32 @@
+{{- if and (.Values.bakery.enabled) .Values.bakery.ui.gateway.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "bakery.uiFullname" . }}-httproute
+  labels:
+    {{- include "bakery.labels" . | nindent 4 }}
+    app.kubernetes.io/component: bakery-ui-gateway
+  {{- with .Values.bakery.ui.gateway.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  hostnames:
+  {{- range .Values.bakery.ui.gateway.hostnames }}
+  - {{ . | quote }}
+  {{- end }}
+  parentRefs:
+  - name: {{ .Values.bakery.ui.gateway.gatewayName }}
+    {{- if .Values.bakery.ui.gateway.gatewayNamespace }}
+    namespace: {{ .Values.bakery.ui.gateway.gatewayNamespace }}
+    {{- end }}
+    sectionName: {{ .Values.bakery.ui.gateway.listener.name }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: {{ include "bakery.uiFullname" . }}
+      port: {{ .Values.bakery.ui.service.port }}
+{{- end }}

@@ -85,10 +85,24 @@ bakery:
       updateIfExists: true
     hostnames:
       - bakery.example.com
+  ui:
+    publicUrl: https://bakery-ui.example.net
+    apiBaseUrl: https://bakery.example.com
+    gateway:
+      enabled: true
+      gatewayName: bakery-ui-gateway
+      gatewayNamespace: envoy-gateway
+      listener:
+        name: bakery-ui-https
+      hostnames:
+        - bakery-ui.example.net
   rackspaceCore:
     existingSecret: bakery-rackspace-core
     verifySsl: false
 ```
+
+The split UI gateway is attach-only. The chart creates the UI `HTTPRoute`, but the
+`bakery-ui-gateway` Gateway and listener must already exist in the cluster.
 
 Put pull secrets in `00-pull-secret-overrides.yaml` when private GHCR pulls are required.
 
@@ -106,7 +120,7 @@ by default.
 Override the OCI chart version when needed:
 
 ```bash
-BAKERY_CHART_VERSION="0.1.4" ./bin/install-bakery.sh --bakery-auth-secret-name bakery-hmac
+BAKERY_CHART_VERSION="0.1.5" ./bin/install-bakery.sh --bakery-auth-secret-name bakery-hmac
 ```
 
 Override the OCI chart reference when needed:
@@ -133,7 +147,7 @@ Confirm release state:
 ```bash
 helm ls -n bakery
 kubectl -n bakery get deploy,pods,svc,httproute
-curl -fsS https://bakery.example.com/ | grep -q "Bakery Console"
+curl -fsS https://bakery-ui.example.net/ | grep -q "Bakery Console"
 curl -fsS https://bakery.example.com/api/v1/health
 ```
 
@@ -166,8 +180,9 @@ bakeryctl --url https://bakery.example.com monitors list
 bakeryctl --url https://bakery.example.com jobs list
 ```
 
-Open `https://bakery.example.com/`, sign in through the configured operator auth flow, and confirm
-the browser lands back on `/` with the Bakery UI loaded.
+Open `https://bakery-ui.example.net/`, sign in through the configured operator auth flow, and
+confirm the browser lands back on the UI domain with the Bakery Console loaded while API requests
+continue to target `https://bakery.example.com/api/v1/*`.
 
 ## Live Provider Validation
 

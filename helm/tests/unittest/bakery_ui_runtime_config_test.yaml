@@ -1,0 +1,25 @@
+suite: bakery-ui-runtime-config
+templates:
+  - templates/bakery-ui-configmap.yaml
+tests:
+  - it: renders runtime ui public and api urls into a config asset
+    release:
+      name: bakery
+      namespace: bakery
+    set:
+      bakery.enabled: true
+      bakery.ui.publicUrl: https://bakery-ui.example.net
+      bakery.ui.apiBaseUrl: https://bakery.example.com
+    asserts:
+      - equal:
+          path: kind
+          value: ConfigMap
+      - equal:
+          path: metadata.name
+          value: bakery-ui-runtime
+      - matchRegex:
+          path: data["config.js"]
+          pattern: 'publicUrl: "https://bakery-ui.example.net"'
+      - matchRegex:
+          path: data["config.js"]
+          pattern: 'apiBaseUrl: "https://bakery.example.com"'

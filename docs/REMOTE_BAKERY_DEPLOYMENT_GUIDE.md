@@ -69,10 +69,24 @@ bakery:
       updateIfExists: true
     hostnames:
       - bakery.example.com
+  ui:
+    publicUrl: https://bakery-ui.example.net
+    apiBaseUrl: https://bakery.example.com
+    gateway:
+      enabled: true
+      gatewayName: bakery-ui-gateway
+      gatewayNamespace: envoy-gateway
+      listener:
+        name: bakery-ui-https
+      hostnames:
+        - bakery-ui.example.net
   rackspaceCore:
     existingSecret: bakery-rackspace-core
     verifySsl: false
 ```
+
+The Bakery chart does not create the split UI Gateway. Provision the
+`bakery-ui-gateway` Gateway and listener out of band, then let the chart attach the UI `HTTPRoute`.
 
 Install Bakery from the Bakery repo root:
 
@@ -92,7 +106,7 @@ Verify Bakery before touching PoundCake:
 kubectl -n bakery rollout status deploy/bakery-poundcake-bakery --timeout=300s
 kubectl -n bakery rollout status deploy/bakery-poundcake-bakery-ui --timeout=300s
 kubectl -n bakery rollout status deploy/bakery-poundcake-bakery-worker --timeout=300s
-curl -fsS https://bakery.example.com/ | grep -q "Bakery Console"
+curl -fsS https://bakery-ui.example.net/ | grep -q "Bakery Console"
 curl -fsS https://bakery.example.com/api/v1/health
 curl -fsS https://bakery.example.com/docs > /dev/null
 curl -fsS https://bakery.example.com/redoc > /dev/null

@@ -1,0 +1,45 @@
+suite: bakery-ui-gateway-contract
+templates:
+  - templates/bakery-required.yaml
+tests:
+  - it: fails fast when split ui gateway lacks a gateway name
+    set:
+      bakery.enabled: true
+      bakery.database.createServer: true
+      mariadbOperator.enabled: true
+      bakery.ui.gateway.enabled: true
+      bakery.ui.gateway.listener.name: bakery-ui-https
+      bakery.ui.gateway.hostnames[0]: bakery-ui.example.net
+      bakery.ui.publicUrl: https://bakery-ui.example.net
+      bakery.ui.apiBaseUrl: https://bakery.example.com
+    asserts:
+      - failedTemplate:
+          errorMessage: "bakery.ui.gateway.gatewayName is required when bakery.ui.gateway.enabled=true."
+        template: templates/bakery-required.yaml
+  - it: fails fast when split ui gateway lacks hostnames
+    set:
+      bakery.enabled: true
+      bakery.database.createServer: true
+      mariadbOperator.enabled: true
+      bakery.ui.gateway.enabled: true
+      bakery.ui.gateway.gatewayName: bakery-ui-gateway
+      bakery.ui.gateway.listener.name: bakery-ui-https
+      bakery.ui.publicUrl: https://bakery-ui.example.net
+      bakery.ui.apiBaseUrl: https://bakery.example.com
+    asserts:
+      - failedTemplate:
+          errorMessage: "bakery.ui.gateway.hostnames must include at least one hostname when bakery.ui.gateway.enabled=true."
+        template: templates/bakery-required.yaml
+  - it: fails fast when split ui gateway lacks ui urls
+    set:
+      bakery.enabled: true
+      bakery.database.createServer: true
+      mariadbOperator.enabled: true
+      bakery.ui.gateway.enabled: true
+      bakery.ui.gateway.gatewayName: bakery-ui-gateway
+      bakery.ui.gateway.listener.name: bakery-ui-https
+      bakery.ui.gateway.hostnames[0]: bakery-ui.example.net
+    asserts:
+      - failedTemplate:
+          errorMessage: "bakery.ui.publicUrl is required when bakery.ui.gateway.enabled=true."
+        template: templates/bakery-required.yaml

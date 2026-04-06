@@ -93,3 +93,28 @@ tests:
           value: 8080
       - isNull:
           path: spec.rules[6]
+  - it: omits the ui root rule when the ui has its own gateway route
+    release:
+      name: bakery
+      namespace: bakery
+    set:
+      bakery.enabled: true
+      bakery.gateway.enabled: true
+      bakery.gateway.gatewayName: flex-gateway
+      bakery.gateway.listener.name: bakery-https
+      bakery.gateway.listener.tlsSecretName: bakery-gw-tls-secret
+      bakery.gateway.hostnames[0]: bakery.example.com
+      bakery.ui.gateway.enabled: true
+      bakery.ui.gateway.gatewayName: bakery-ui-gateway
+      bakery.ui.gateway.listener.name: bakery-ui-https
+      bakery.ui.gateway.hostnames[0]: bakery-ui.example.net
+      bakery.ui.publicUrl: https://bakery-ui.example.net
+      bakery.ui.apiBaseUrl: https://bakery.example.com
+    asserts:
+      - hasDocuments:
+          count: 1
+      - lengthEqual:
+          path: spec.rules
+          count: 5
+      - isNull:
+          path: spec.rules[5]

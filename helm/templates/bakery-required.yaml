@@ -67,4 +67,21 @@
 {{- fail "bakery.gateway.listener.protocol=HTTP is not allowed by default. Use HTTPS for external Bakery traffic, or set bakery.gateway.allowInsecureHttp=true only for isolated non-production environments." -}}
 {{- end }}
 {{- end }}
+{{- if .Values.bakery.ui.gateway.enabled }}
+{{- if not .Values.bakery.ui.gateway.gatewayName }}
+{{- fail "bakery.ui.gateway.gatewayName is required when bakery.ui.gateway.enabled=true." -}}
+{{- end }}
+{{- if not .Values.bakery.ui.gateway.listener.name }}
+{{- fail "bakery.ui.gateway.listener.name is required when bakery.ui.gateway.enabled=true." -}}
+{{- end }}
+{{- if eq (len (.Values.bakery.ui.gateway.hostnames | default list)) 0 }}
+{{- fail "bakery.ui.gateway.hostnames must include at least one hostname when bakery.ui.gateway.enabled=true." -}}
+{{- end }}
+{{- if not .Values.bakery.ui.publicUrl }}
+{{- fail "bakery.ui.publicUrl is required when bakery.ui.gateway.enabled=true." -}}
+{{- end }}
+{{- if not .Values.bakery.ui.apiBaseUrl }}
+{{- fail "bakery.ui.apiBaseUrl is required when bakery.ui.gateway.enabled=true." -}}
+{{- end }}
+{{- end }}
 {{- end }}

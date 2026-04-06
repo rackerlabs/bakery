@@ -97,6 +97,8 @@ bakery:
 
   ui:
     replicaCount: 1
+    publicUrl: ""
+    apiBaseUrl: ""
     image:
       repository: ghcr.io/rackerlabs/bakery-ui
       pullPolicy: Always
@@ -111,6 +113,14 @@ bakery:
       limits:
         cpu: 250m
         memory: 128Mi
+    gateway:
+      enabled: false
+      gatewayName: ""
+      gatewayNamespace: ""
+      listener:
+        name: ""
+      hostnames: []
+      annotations: {}
 
   service:
     type: ClusterIP

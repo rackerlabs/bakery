@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from bakery.config import settings
+from bakery.config import normalize_external_url, settings
 from bakery.database import get_db
 from bakery.operator_auth import (
     AccessDeniedError,
@@ -71,13 +71,18 @@ def _request_is_secure(request: Request) -> bool:
     return request.url.scheme.lower() == "https"
 
 
+def _allowed_ui_public_url() -> str:
+    return normalize_external_url(settings.ui_public_url)
+
+
 def _set_session_cookie(request: Request, response: Response, session_id: str) -> None:
+    split_ui_enabled = bool(_allowed_ui_public_url())
     response.set_cookie(
         key="session_token",
         value=session_id,
         httponly=True,
-        samesite="lax",
-        secure=_request_is_secure(request),
+        samesite="none" if split_ui_enabled else "lax",
+        secure=True if split_ui_enabled else _request_is_secure(request),
         path="/",
         max_age=settings.operator_auth_session_timeout,
     )
@@ -88,11 +93,21 @@ def _clear_session_cookie(response: Response) -> None:
 
 
 def _normalize_next_target(target: str | None) -> str:
-    if not target or not target.startswith("/"):
-        return "/"
-    if target == "/login" or target.startswith("/login?"):
-        return "/"
-    return target
+    default_target = _allowed_ui_public_url() or "/"
+    if not target:
+        return default_target
+    if target.startswith("/"):
+        if target == "/login" or target.startswith("/login?"):
+            return default_target
+        return target
+    normalized_target = normalize_external_url(target)
+    allowed_target = _allowed_ui_public_url()
+    if normalized_target and allowed_target and secrets.compare_digest(
+        normalized_target,
+        allowed_target,
+    ):
+        return normalized_target
+    return default_target
 
 
 def _provider_response(item: dict[str, object]) -> AuthProviderResponse:

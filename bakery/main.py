@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 import structlog
 
@@ -151,6 +152,15 @@ app = FastAPI(
     openapi_url="/openapi.json",
     openapi_tags=tags_metadata,
 )
+
+if settings.ui_public_origin:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[settings.ui_public_origin],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 # Exception handler

@@ -19,8 +19,9 @@ spec:
         app.kubernetes.io/component: ui
         {{- include "bakery.logGroupLabel" . | nindent 8 }}
         {{- include "bakery.logRoleUi" . | nindent 8 }}
-      {{- with .Values.podAnnotations }}
       annotations:
+        checksum/ui-runtime-config: {{ printf "%s|%s" (.Values.bakery.ui.publicUrl | default "") (.Values.bakery.ui.apiBaseUrl | default "") | sha256sum }}
+      {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
@@ -50,7 +51,15 @@ spec:
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
+          volumeMounts:
+            - name: ui-runtime-config
+              mountPath: /app/runtime
+              readOnly: true
           resources:
             {{- toYaml .Values.bakery.ui.resources | nindent 12 }}
+      volumes:
+        - name: ui-runtime-config
+          configMap:
+            name: {{ include "bakery.uiFullname" . }}-runtime
       {{- include "bakery.podPlacement" . | nindent 6 }}
 {{- end }}

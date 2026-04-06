@@ -82,7 +82,9 @@ def test_login_sets_cross_site_cookie_for_split_ui(monkeypatch) -> None:
         "authenticate_password_provider",
         _fake_authenticate_password_provider,
     )
-    monkeypatch.setattr(operator_auth_api, "build_login_context", lambda db, identity: _auth_context())
+    monkeypatch.setattr(
+        operator_auth_api, "build_login_context", lambda db, identity: _auth_context()
+    )
 
     def _fake_create_session(db, context, *, ttl_seconds):
         context.session_id = "sess-123"
@@ -118,7 +120,9 @@ def test_login_keeps_lax_cookie_for_legacy_same_host_ui(monkeypatch) -> None:
         "authenticate_password_provider",
         _fake_authenticate_password_provider,
     )
-    monkeypatch.setattr(operator_auth_api, "build_login_context", lambda db, identity: _auth_context())
+    monkeypatch.setattr(
+        operator_auth_api, "build_login_context", lambda db, identity: _auth_context()
+    )
 
     def _fake_create_session(db, context, *, ttl_seconds):
         context.session_id = "sess-legacy"
@@ -168,6 +172,8 @@ def test_cors_does_not_allow_unconfigured_origin(monkeypatch) -> None:
 def test_normalize_next_target_allows_only_the_configured_ui_url(monkeypatch) -> None:
     monkeypatch.setattr(settings, "ui_public_url", "https://bakery-ui.example.net/")
 
-    assert _normalize_next_target("https://bakery-ui.example.net") == "https://bakery-ui.example.net"
+    assert (
+        _normalize_next_target("https://bakery-ui.example.net") == "https://bakery-ui.example.net"
+    )
     assert _normalize_next_target("https://evil.example.org") == "https://bakery-ui.example.net"
     assert _normalize_next_target("/reports") == "/reports"

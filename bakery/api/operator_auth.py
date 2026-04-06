@@ -102,9 +102,13 @@ def _normalize_next_target(target: str | None) -> str:
         return target
     normalized_target = normalize_external_url(target)
     allowed_target = _allowed_ui_public_url()
-    if normalized_target and allowed_target and secrets.compare_digest(
-        normalized_target,
-        allowed_target,
+    if (
+        normalized_target
+        and allowed_target
+        and secrets.compare_digest(
+            normalized_target,
+            allowed_target,
+        )
     ):
         return normalized_target
     return default_target

@@ -53,7 +53,8 @@ spec:
             periodSeconds: 10
           volumeMounts:
             - name: ui-runtime-config
-              mountPath: /app/runtime
+              mountPath: /app/runtime/config.js
+              subPath: config.js
               readOnly: true
           resources:
             {{- toYaml .Values.bakery.ui.resources | nindent 12 }}

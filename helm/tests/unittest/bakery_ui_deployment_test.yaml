@@ -36,7 +36,10 @@ tests:
           value: 8080
       - equal:
           path: spec.template.spec.containers[0].volumeMounts[0].mountPath
-          value: /app/runtime
+          value: /app/runtime/config.js
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].subPath
+          value: config.js
       - equal:
           path: spec.template.spec.volumes[0].configMap.name
           value: bakery-ui-runtime

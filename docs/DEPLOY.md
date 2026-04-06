@@ -120,7 +120,7 @@ by default.
 Override the OCI chart version when needed:
 
 ```bash
-BAKERY_CHART_VERSION="0.1.5" ./bin/install-bakery.sh --bakery-auth-secret-name bakery-hmac
+BAKERY_CHART_VERSION="0.1.6" ./bin/install-bakery.sh --bakery-auth-secret-name bakery-hmac
 ```
 
 Override the OCI chart reference when needed:

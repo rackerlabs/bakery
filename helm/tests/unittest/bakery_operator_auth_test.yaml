@@ -1,0 +1,109 @@
+suite: bakery-operator-auth
+templates:
+  - templates/bakery-deployment.yaml
+  - templates/bakery-required.yaml
+tests:
+  - it: wires local bootstrap auth credentials from a secret into the api deployment
+    template: templates/bakery-deployment.yaml
+    release:
+      name: bakery
+      namespace: bakery
+    set:
+      bakery.enabled: true
+      bakery.operatorAuth.enabled: true
+      bakery.operatorAuth.local.enabled: true
+      bakery.operatorAuth.local.existingSecret: bakery-operator-auth
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BAKERY_OPERATOR_AUTH_ENABLED
+            value: "true"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BAKERY_OPERATOR_AUTH_LOCAL_ENABLED
+            value: "true"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BAKERY_OPERATOR_AUTH_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: bakery-operator-auth
+                key: username
+                optional: true
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BAKERY_OPERATOR_AUTH_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: bakery-operator-auth
+                key: password
+                optional: true
+  - it: wires auth0 browser login settings and client secret into the api deployment
+    template: templates/bakery-deployment.yaml
+    release:
+      name: bakery
+      namespace: bakery
+    set:
+      bakery.enabled: true
+      bakery.operatorAuth.auth0.enabled: true
+      bakery.operatorAuth.auth0.shared.domain: dev-tenant.us.auth0.com
+      bakery.operatorAuth.auth0.shared.connection: Bakery-Users
+      bakery.operatorAuth.auth0.ui.enabled: true
+      bakery.operatorAuth.auth0.ui.clientId: bakery-ui-client
+      bakery.operatorAuth.auth0.ui.callbackUrl: https://bakery.example.com/api/v1/auth/oidc/callback
+      bakery.operatorAuth.auth0.ui.existingSecret: bakery-auth0-ui
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BAKERY_OPERATOR_AUTH_AUTH0_ENABLED
+            value: "true"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BAKERY_OPERATOR_AUTH_AUTH0_DOMAIN
+            value: dev-tenant.us.auth0.com
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BAKERY_OPERATOR_AUTH_AUTH0_CONNECTION
+            value: Bakery-Users
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BAKERY_OPERATOR_AUTH_AUTH0_UI_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: bakery-auth0-ui
+                key: client-secret
+                optional: true
+  - it: fails fast when auth0 is enabled without a domain
+    template: templates/bakery-required.yaml
+    set:
+      bakery.enabled: true
+      bakery.database.createServer: true
+      mariadbOperator.enabled: true
+      bakery.operatorAuth.auth0.enabled: true
+      bakery.operatorAuth.auth0.ui.enabled: true
+      bakery.operatorAuth.auth0.ui.clientId: bakery-ui-client
+    asserts:
+      - failedTemplate:
+          errorMessage: "bakery.operatorAuth.auth0.shared.domain is required when bakery.operatorAuth.auth0.enabled=true."
+        template: templates/bakery-required.yaml
+  - it: fails fast when azure ad browser login lacks a client id
+    template: templates/bakery-required.yaml
+    set:
+      bakery.enabled: true
+      bakery.database.createServer: true
+      mariadbOperator.enabled: true
+      bakery.operatorAuth.azureAd.enabled: true
+      bakery.operatorAuth.azureAd.shared.tenant: 11111111-1111-1111-1111-111111111111
+      bakery.operatorAuth.azureAd.ui.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "bakery.operatorAuth.azureAd.ui.clientId is required when bakery.operatorAuth.azureAd.ui.enabled=true."
+        template: templates/bakery-required.yaml

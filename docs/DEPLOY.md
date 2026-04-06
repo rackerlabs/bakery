@@ -58,6 +58,20 @@ kubectl -n bakery create secret generic bakery-operator-auth \
 Then wire the matching `BAKERY_OPERATOR_AUTH_*` env vars through your chart overrides or secret
 mapping. OIDC and service-token flows are also supported by the operator auth endpoints.
 
+Bakery now exposes Helm values for operator auth under `bakery.operatorAuth.*`. Local bootstrap auth
+can be enabled with:
+
+```yaml
+bakery:
+  operatorAuth:
+    local:
+      enabled: true
+      existingSecret: bakery-operator-auth
+```
+
+Auth0 and Azure AD flows follow the same shared/ui/cli split already used in PoundCake:
+`bakery.operatorAuth.auth0.*` and `bakery.operatorAuth.azureAd.*`.
+
 ## Minimum Override Shape
 
 `10-main-overrides.yaml`

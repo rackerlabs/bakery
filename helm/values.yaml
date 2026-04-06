@@ -173,6 +173,67 @@ bakery:
     hmac:
       timestampSkewSec: 300
 
+  operatorAuth:
+    enabled: true
+    sessionTimeout: 86400
+    oidcStateTtl: 600
+    rbacEnabled: true
+    serviceToken:
+      existingSecret: ""
+      secretKeys:
+        token: "service-token"
+    local:
+      enabled: true
+      existingSecret: ""
+      secretKeys:
+        username: "username"
+        password: "password"
+    auth0:
+      enabled: false
+      shared:
+        domain: ""
+        audience: ""
+        scope: "openid profile email"
+        organization: ""
+        connection: ""
+        usernameClaim: "email"
+        displayNameClaim: "name"
+        groupsClaim: "groups"
+        subjectClaim: "sub"
+      ui:
+        enabled: false
+        clientId: ""
+        callbackUrl: ""
+        existingSecret: ""
+        secretKeys:
+          clientSecret: "client-secret"
+      cli:
+        enabled: false
+        clientId: ""
+        existingSecret: ""
+        secretKeys:
+          clientSecret: "client-secret"
+    azureAd:
+      enabled: false
+      shared:
+        tenant: ""
+        audience: ""
+        scope: "openid profile email"
+        usernameClaim: "preferred_username"
+        displayNameClaim: "name"
+        groupsClaim: "groups"
+        subjectClaim: "sub"
+      ui:
+        enabled: false
+        clientId: ""
+        callbackUrl: ""
+        existingSecret: ""
+        secretKeys:
+          clientSecret: "client-secret"
+      cli:
+        enabled: false
+        clientId: ""
+
   monitoring:
     defaultKeyId: "active"
     bootstrapKeyId: "bootstrap"

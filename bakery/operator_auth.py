@@ -118,6 +118,14 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def normalize_utc_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def normalize_groups(groups: list[str] | None) -> list[str]:
     seen: dict[str, str] = {}
     for group in groups or []:
@@ -946,7 +954,12 @@ def get_session(db: Session, session_id: str | None) -> AuthContext | None:
     session = db.query(AuthSession).filter(AuthSession.session_id == session_id).first()
     if session is None:
         return None
-    if session.expires_at <= utc_now():
+    expires_at = normalize_utc_datetime(session.expires_at)
+    if expires_at is None:
+        db.delete(session)
+        db.flush()
+        return None
+    if expires_at <= utc_now():
         db.delete(session)
         db.flush()
         return None
@@ -962,7 +975,7 @@ def get_session(db: Session, session_id: str | None) -> AuthContext | None:
         permissions=list(session.permissions_json or []),
         principal_id=session.principal_id,
         session_id=session.session_id,
-        expires_at=session.expires_at.isoformat(),
+        expires_at=expires_at.isoformat(),
     )
 
 
@@ -1010,7 +1023,8 @@ def pop_state(db: Session, *, kind: str, state_key: str) -> dict[str, Any] | Non
     if row is None:
         return None
     payload = dict(row.payload_json or {})
-    expired = row.expires_at <= utc_now()
+    expires_at = normalize_utc_datetime(row.expires_at)
+    expired = expires_at is None or expires_at <= utc_now()
     db.delete(row)
     db.flush()
     if expired:

@@ -28,6 +28,8 @@ wheels/
 MANIFEST
 ui/node_modules/
 ui/dist/
+!ui/src/lib/
+!ui/src/lib/**
 
 # Virtual Environments
 .env

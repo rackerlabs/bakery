@@ -10,6 +10,7 @@ from typing import Any, TypeVar, cast
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Query, Session
 
+from bakery.collection_jobs import collection_job_response, list_collection_jobs_query
 from bakery.models import (
     CollectionJob,
     Monitor,
@@ -19,11 +20,15 @@ from bakery.models import (
     TicketOperation,
 )
 from bakery.schemas import (
+    CollectionJobResponse,
     MonitorEventResponse,
+    MonitorDetailResponse,
+    MonitorFilterOptionResponse,
     MonitorRouteInventoryResponse,
     MonitorSummaryResponse,
     OperationAnalyticsResponse,
     ProviderAnalyticsResponse,
+    ReportFilterOptionsResponse,
     ReportOverviewResponse,
     TicketBacklogResponse,
 )
@@ -171,6 +176,77 @@ def report_overview(
         queued_collection_jobs=job_query.filter(CollectionJob.status == "queued").count(),
         leased_collection_jobs=job_query.filter(CollectionJob.status == "leased").count(),
         timed_out_collection_jobs=job_query.filter(CollectionJob.status == "timed_out").count(),
+    )
+
+
+def report_filter_options(db: Session) -> ReportFilterOptionsResponse:
+    monitor_rows = (
+        db.query(Monitor)
+        .order_by(
+            Monitor.status.asc(),
+            Monitor.environment_label.asc(),
+            Monitor.monitor_id.asc(),
+        )
+        .all()
+    )
+    environment_labels = [
+        str(value)
+        for value, in (
+            db.query(Monitor.environment_label)
+            .filter(
+                Monitor.environment_label.is_not(None),
+                Monitor.environment_label != "",
+            )
+            .distinct()
+            .order_by(Monitor.environment_label.asc())
+            .all()
+        )
+    ]
+    provider_types = [
+        str(value)
+        for value, in (
+            db.query(MonitorRouteCatalogEntry.provider_type)
+            .filter(
+                MonitorRouteCatalogEntry.provider_type.is_not(None),
+                MonitorRouteCatalogEntry.provider_type != "",
+            )
+            .distinct()
+            .order_by(MonitorRouteCatalogEntry.provider_type.asc())
+            .all()
+        )
+    ]
+    account_numbers = [
+        str(value)
+        for value, in (
+            db.query(MonitorRouteCatalogEntry.account_number)
+            .filter(
+                MonitorRouteCatalogEntry.account_number.is_not(None),
+                MonitorRouteCatalogEntry.account_number != "",
+            )
+            .distinct()
+            .order_by(MonitorRouteCatalogEntry.account_number.asc())
+            .all()
+        )
+    ]
+    return ReportFilterOptionsResponse(
+        monitors=[
+            MonitorFilterOptionResponse(
+                monitor_uuid=monitor.monitor_uuid,
+                monitor_id=monitor.monitor_id,
+                status=monitor.status,
+                environment_label=monitor.environment_label,
+                region=monitor.region,
+                cluster_name=monitor.cluster_name,
+                namespace=monitor.namespace,
+                release_name=monitor.release_name,
+                route_sync_required=bool(monitor.route_sync_required),
+                last_checkin_at=monitor.last_checkin_at,
+            )
+            for monitor in monitor_rows
+        ],
+        environment_labels=environment_labels,
+        provider_types=provider_types,
+        account_numbers=account_numbers,
     )
 
 
@@ -554,3 +630,54 @@ def ticket_backlog(
         )
         for ticket, monitor in rows
     ]
+
+
+def monitor_detail(
+    db: Session,
+    *,
+    monitor_uuid: str,
+    recent_event_limit: int = 12,
+    recent_job_limit: int = 25,
+    recent_route_limit: int = 100,
+    backlog_limit: int = 10,
+) -> MonitorDetailResponse | None:
+    monitor_rows = list_monitors(db, monitor_uuid=monitor_uuid, limit=1, offset=0)
+    if not monitor_rows:
+        return None
+
+    recent_jobs_rows = (
+        list_collection_jobs_query(db, monitor_uuid=monitor_uuid)
+        .limit(recent_job_limit)
+        .offset(0)
+        .all()
+    )
+    latest_successful_rows = (
+        db.query(CollectionJob)
+        .filter(
+            CollectionJob.monitor_uuid == monitor_uuid,
+            CollectionJob.status == "succeeded",
+        )
+        .order_by(
+            CollectionJob.completed_at.desc(),
+            CollectionJob.updated_at.desc(),
+            CollectionJob.id.desc(),
+        )
+        .all()
+    )
+    latest_successful_jobs: list[CollectionJobResponse] = []
+    seen_collectors: set[str] = set()
+    for job in latest_successful_rows:
+        if job.collector_type in seen_collectors:
+            continue
+        latest_successful_jobs.append(collection_job_response(job))
+        seen_collectors.add(job.collector_type)
+
+    return MonitorDetailResponse(
+        monitor=monitor_rows[0],
+        recent_events=list_monitor_events(db, monitor_uuid=monitor_uuid, limit=recent_event_limit),
+        recent_routes=list_route_inventory(db, monitor_uuid=monitor_uuid, limit=recent_route_limit),
+        recent_jobs=[collection_job_response(job) for job in recent_jobs_rows],
+        latest_successful_jobs=latest_successful_jobs,
+        operation_analytics=operation_analytics(db, monitor_uuid=monitor_uuid),
+        backlog=ticket_backlog(db, monitor_uuid=monitor_uuid, limit=backlog_limit),
+    )

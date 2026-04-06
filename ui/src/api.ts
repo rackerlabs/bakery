@@ -1,12 +1,19 @@
 import type {
   AuthMeResponse,
+  BacklogRow,
+  CollectionCollector,
   CollectionJob,
+  FilterOptions,
+  JobFilters,
+  MonitorDetail,
+  MonitorEventRow,
   MonitorRow,
+  OperationAnalyticsRow,
   Overview,
   ProviderAnalyticsRow,
+  ReportFilters,
   RouteRow,
   SettingsResponse,
-  BacklogRow,
 } from "./contracts";
 import { buildApiUrl, usesExternalApiBaseUrl } from "./config";
 
@@ -19,6 +26,41 @@ export class ApiError extends Error {
     this.status = status;
     this.body = body;
   }
+}
+
+function buildSearch(params: Record<string, string | number | undefined>): string {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === "") {
+      return;
+    }
+    search.set(key, String(value));
+  });
+  const serialized = search.toString();
+  return serialized ? `?${serialized}` : "";
+}
+
+function reportSearch(filters: ReportFilters = {}): string {
+  return buildSearch({
+    monitor_uuid: filters.monitorUuid,
+    environment_label: filters.environmentLabel,
+    provider_type: filters.providerType,
+    account_number: filters.accountNumber,
+    start_at: filters.startAt,
+    end_at: filters.endAt,
+    limit: filters.limit,
+    offset: filters.offset,
+  });
+}
+
+function jobSearch(filters: JobFilters = {}): string {
+  return buildSearch({
+    monitor_uuid: filters.monitorUuid,
+    status: filters.status,
+    collector_type: filters.collectorType,
+    limit: filters.limit,
+    offset: filters.offset,
+  });
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -53,12 +95,27 @@ export const api = {
       body: JSON.stringify({ provider, username, password }),
     }),
   logout: () => request("/api/v1/auth/logout", { method: "POST" }),
-  overview: () => request<Overview>("/api/v1/reports/overview"),
-  monitors: () => request<MonitorRow[]>("/api/v1/reports/monitors"),
-  routes: () => request<RouteRow[]>("/api/v1/reports/routes"),
-  providers: () => request<ProviderAnalyticsRow[]>("/api/v1/reports/providers"),
-  backlog: () => request<BacklogRow[]>("/api/v1/reports/backlog"),
-  jobs: () => request<CollectionJob[]>("/api/v1/collection-jobs"),
+  filterOptions: () => request<FilterOptions>("/api/v1/reports/filter-options"),
+  collectors: () => request<CollectionCollector[]>("/api/v1/collection-jobs/collectors"),
+  overview: (filters: ReportFilters = {}) =>
+    request<Overview>(`/api/v1/reports/overview${reportSearch(filters)}`),
+  monitors: (filters: ReportFilters = {}) =>
+    request<MonitorRow[]>(`/api/v1/reports/monitors${reportSearch(filters)}`),
+  monitorDetail: (monitorUuid: string) =>
+    request<MonitorDetail>(`/api/v1/reports/monitors/${monitorUuid}/detail`),
+  monitorEvents: (filters: ReportFilters = {}) =>
+    request<MonitorEventRow[]>(`/api/v1/reports/monitor-events${reportSearch(filters)}`),
+  routes: (filters: ReportFilters = {}) =>
+    request<RouteRow[]>(`/api/v1/reports/routes${reportSearch(filters)}`),
+  providers: (filters: ReportFilters = {}) =>
+    request<ProviderAnalyticsRow[]>(`/api/v1/reports/providers${reportSearch(filters)}`),
+  operations: (filters: ReportFilters = {}) =>
+    request<OperationAnalyticsRow[]>(`/api/v1/reports/operations${reportSearch(filters)}`),
+  backlog: (filters: ReportFilters = {}) =>
+    request<BacklogRow[]>(`/api/v1/reports/backlog${reportSearch(filters)}`),
+  jobs: (filters: JobFilters = {}) =>
+    request<CollectionJob[]>(`/api/v1/collection-jobs${jobSearch(filters)}`),
+  job: (jobId: string) => request<CollectionJob>(`/api/v1/collection-jobs/${jobId}`),
   queueJob: (payload: {
     monitor_uuid: string;
     collector_type: string;

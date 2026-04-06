@@ -18,18 +18,97 @@ from shared.bakery_contract import (
     CollectionJobResponse,
 )
 
-ALLOWED_COLLECTOR_TYPES = {
-    "monitor_diagnostics",
-    "cluster_inventory",
-    "ticket_context",
+COLLECTOR_CATALOG: dict[str, dict[str, object]] = {
+    "monitor_diagnostics": {
+        "collector_type": "monitor_diagnostics",
+        "label": "Monitor diagnostics",
+        "description": "Collect health, runtime, and monitor-registration state from one PoundCake monitor.",
+        "default_parameters": {},
+        "example_parameters": {},
+        "parameters": [],
+    },
+    "cluster_inventory": {
+        "collector_type": "cluster_inventory",
+        "label": "Cluster inventory",
+        "description": "Snapshot pods, deployments, statefulsets, and services from a target namespace.",
+        "default_parameters": {"limit": 50},
+        "example_parameters": {"namespace": "rackspace", "limit": 25},
+        "parameters": [
+            {
+                "name": "namespace",
+                "label": "Namespace",
+                "field_type": "text",
+                "description": "Namespace to inspect. Defaults to the monitor namespace when omitted.",
+                "required": False,
+                "default_value": "",
+                "placeholder": "rackspace",
+            },
+            {
+                "name": "limit",
+                "label": "Row limit",
+                "field_type": "number",
+                "description": "Maximum resources to fetch for each Kubernetes collection.",
+                "required": False,
+                "default_value": 50,
+                "placeholder": "50",
+            },
+        ],
+    },
+    "ticket_context": {
+        "collector_type": "ticket_context",
+        "label": "Ticket context",
+        "description": "Pull related PoundCake orders, communications, and dishes for one Bakery ticket or request.",
+        "default_parameters": {"limit": 20},
+        "example_parameters": {"bakery_ticket_id": "bakery-ticket-123", "limit": 20},
+        "parameters": [
+            {
+                "name": "order_id",
+                "label": "Order ID",
+                "field_type": "number",
+                "description": "Specific PoundCake order ID to inspect.",
+                "required": False,
+                "default_value": None,
+                "placeholder": "204",
+            },
+            {
+                "name": "req_id",
+                "label": "Request ID",
+                "field_type": "text",
+                "description": "PoundCake request ID associated with the workflow.",
+                "required": False,
+                "default_value": "",
+                "placeholder": "req-12345",
+            },
+            {
+                "name": "bakery_ticket_id",
+                "label": "Bakery ticket ID",
+                "field_type": "text",
+                "description": "Bakery communication or ticket identifier used by PoundCake.",
+                "required": False,
+                "default_value": "",
+                "placeholder": "bakery-ticket-123",
+            },
+            {
+                "name": "limit",
+                "label": "Row limit",
+                "field_type": "number",
+                "description": "Maximum related records to include in the result set.",
+                "required": False,
+                "default_value": 20,
+                "placeholder": "20",
+            },
+        ],
+    },
 }
+
+ALLOWED_COLLECTOR_TYPES = set(COLLECTOR_CATALOG)
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _collection_job_response(job: CollectionJob) -> CollectionJobResponse:
+def collection_job_response(job: CollectionJob) -> CollectionJobResponse:
     return CollectionJobResponse(
         job_id=job.job_id,
         monitor_uuid=job.monitor_uuid,
@@ -47,6 +126,10 @@ def _collection_job_response(job: CollectionJob) -> CollectionJobResponse:
         created_at=job.created_at,
         updated_at=job.updated_at,
     )
+
+
+def list_collection_collectors_metadata() -> list[dict[str, object]]:
+    return [dict(COLLECTOR_CATALOG[key]) for key in sorted(COLLECTOR_CATALOG)]
 
 
 def expire_collection_job_leases(db: Session) -> int:
@@ -97,7 +180,7 @@ def create_collection_job(
     )
     db.add(job)
     db.flush()
-    return _collection_job_response(job)
+    return collection_job_response(job)
 
 
 def list_collection_jobs_query(
@@ -154,7 +237,7 @@ def claim_next_collection_job(
     job.started_at = now
     job.updated_at = now
     db.flush()
-    return CollectionJobClaimResponse(available=True, job=_collection_job_response(job))
+    return CollectionJobClaimResponse(available=True, job=collection_job_response(job))
 
 
 def complete_collection_job(
@@ -195,7 +278,7 @@ def complete_collection_job(
     job.lease_expires_at = None
     job.updated_at = now
     db.flush()
-    return _collection_job_response(job)
+    return collection_job_response(job)
 
 
 def requeue_collection_job(db: Session, *, job_id: str) -> CollectionJobResponse:
@@ -209,4 +292,4 @@ def requeue_collection_job(db: Session, *, job_id: str) -> CollectionJobResponse
     job.error = None
     job.updated_at = now
     db.flush()
-    return _collection_job_response(job)
+    return collection_job_response(job)

@@ -34,6 +34,8 @@ from shared.bakery_contract import (
 __all__ = [
     "CommunicationAcceptedResponse",
     "CommunicationCloseRequest",
+    "CollectionCollectorFieldResponse",
+    "CollectionCollectorResponse",
     "CollectionJobClaimResponse",
     "CollectionJobCompleteRequest",
     "CollectionJobCreateRequest",
@@ -45,6 +47,8 @@ __all__ = [
     "CommunicationResponse",
     "CommunicationUpdateRequest",
     "MonitorBootstrapCredentialResponse",
+    "MonitorDetailResponse",
+    "MonitorFilterOptionResponse",
     "MonitorHeartbeatRequest",
     "MonitorHeartbeatResponse",
     "MonitorMetadata",
@@ -53,6 +57,7 @@ __all__ = [
     "MonitorRouteCatalogEntry",
     "MonitorRouteCatalogSyncRequest",
     "MonitorRouteCatalogSyncResponse",
+    "ReportFilterOptionsResponse",
 ]
 
 
@@ -377,6 +382,30 @@ class ReportOverviewResponse(BaseModel):
     timed_out_collection_jobs: int
 
 
+class MonitorFilterOptionResponse(BaseModel):
+    """Compact monitor metadata used by UI pickers and filter UIs."""
+
+    monitor_uuid: str
+    monitor_id: str
+    status: str
+    environment_label: str | None = None
+    region: str | None = None
+    cluster_name: str | None = None
+    namespace: str | None = None
+    release_name: str | None = None
+    route_sync_required: bool = False
+    last_checkin_at: datetime | None = None
+
+
+class ReportFilterOptionsResponse(BaseModel):
+    """Distinct filter options surfaced to the Bakery operator UI."""
+
+    monitors: list[MonitorFilterOptionResponse] = Field(default_factory=list)
+    environment_labels: list[str] = Field(default_factory=list)
+    provider_types: list[str] = Field(default_factory=list)
+    account_numbers: list[str] = Field(default_factory=list)
+
+
 class MonitorSummaryResponse(BaseModel):
     """Monitor inventory row for reporting and drill-down."""
 
@@ -463,3 +492,38 @@ class TicketBacklogResponse(BaseModel):
     latest_error: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class CollectionCollectorFieldResponse(BaseModel):
+    """One UI field exposed for a collector's parameters."""
+
+    name: str
+    label: str
+    field_type: str
+    description: str
+    required: bool = False
+    default_value: Any | None = None
+    placeholder: str | None = None
+
+
+class CollectionCollectorResponse(BaseModel):
+    """UI-friendly metadata about a supported collection collector."""
+
+    collector_type: str
+    label: str
+    description: str
+    default_parameters: Dict[str, Any] = Field(default_factory=dict)
+    example_parameters: Dict[str, Any] = Field(default_factory=dict)
+    parameters: list[CollectionCollectorFieldResponse] = Field(default_factory=list)
+
+
+class MonitorDetailResponse(BaseModel):
+    """Drill-down payload for one Bakery monitor."""
+
+    monitor: MonitorSummaryResponse
+    recent_events: list[MonitorEventResponse] = Field(default_factory=list)
+    recent_routes: list[MonitorRouteInventoryResponse] = Field(default_factory=list)
+    recent_jobs: list[CollectionJobResponse] = Field(default_factory=list)
+    latest_successful_jobs: list[CollectionJobResponse] = Field(default_factory=list)
+    operation_analytics: list[OperationAnalyticsResponse] = Field(default_factory=list)
+    backlog: list[TicketBacklogResponse] = Field(default_factory=list)

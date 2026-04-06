@@ -5,26 +5,30 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from bakery.database import get_db
 from bakery.operator_auth import AuthContext, require_reader
 from bakery.reports import (
+    monitor_detail,
     list_monitor_events,
     list_monitors,
     list_route_inventory,
     operation_analytics,
     provider_analytics,
+    report_filter_options,
     report_overview,
     ticket_backlog,
 )
 from bakery.schemas import (
     MonitorEventResponse,
+    MonitorDetailResponse,
     MonitorRouteInventoryResponse,
     MonitorSummaryResponse,
     OperationAnalyticsResponse,
     ProviderAnalyticsResponse,
+    ReportFilterOptionsResponse,
     ReportOverviewResponse,
     TicketBacklogResponse,
 )
@@ -75,6 +79,14 @@ async def get_report_overview(
     )
 
 
+@router.get("/reports/filter-options", response_model=ReportFilterOptionsResponse)
+async def get_report_filter_options(
+    _context: AuthContext = Depends(require_reader),
+    db: Session = Depends(get_db),
+) -> ReportFilterOptionsResponse:
+    return report_filter_options(db)
+
+
 @router.get("/reports/monitors", response_model=list[MonitorSummaryResponse])
 async def get_monitor_report(
     start_at: datetime | None = Query(default=None),
@@ -101,6 +113,18 @@ async def get_monitor_report(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/reports/monitors/{monitor_uuid}/detail", response_model=MonitorDetailResponse)
+async def get_monitor_detail_report(
+    monitor_uuid: str,
+    _context: AuthContext = Depends(require_reader),
+    db: Session = Depends(get_db),
+) -> MonitorDetailResponse:
+    response = monitor_detail(db, monitor_uuid=monitor_uuid)
+    if response is None:
+        raise HTTPException(status_code=404, detail="Monitor not found")
+    return response
 
 
 @router.get("/reports/monitor-events", response_model=list[MonitorEventResponse])

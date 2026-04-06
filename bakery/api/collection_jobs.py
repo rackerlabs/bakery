@@ -9,11 +9,13 @@ from sqlalchemy.orm import Session
 from bakery.collection_jobs import (
     create_collection_job,
     get_collection_job,
+    list_collection_collectors_metadata,
     list_collection_jobs_query,
     requeue_collection_job,
 )
 from bakery.database import get_db
 from bakery.operator_auth import AuthContext, require_operator, require_reader
+from bakery.schemas import CollectionCollectorResponse
 from shared.bakery_contract import CollectionJobCreateRequest, CollectionJobResponse
 
 router = APIRouter()
@@ -76,6 +78,16 @@ async def get_collection_jobs(
             }
         )
         for row in rows
+    ]
+
+
+@router.get("/collection-jobs/collectors", response_model=list[CollectionCollectorResponse])
+async def get_collection_collectors(
+    _context: AuthContext = Depends(require_reader),
+) -> list[CollectionCollectorResponse]:
+    return [
+        CollectionCollectorResponse.model_validate(item)
+        for item in list_collection_collectors_metadata()
     ]
 
 

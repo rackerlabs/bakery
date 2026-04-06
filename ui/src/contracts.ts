@@ -41,6 +41,26 @@ export type Overview = {
   timed_out_collection_jobs: number;
 };
 
+export type MonitorFilterOption = {
+  monitor_uuid: string;
+  monitor_id: string;
+  status: string;
+  environment_label: string | null;
+  region: string | null;
+  cluster_name: string | null;
+  namespace: string | null;
+  release_name: string | null;
+  route_sync_required: boolean;
+  last_checkin_at: string | null;
+};
+
+export type FilterOptions = {
+  monitors: MonitorFilterOption[];
+  environment_labels: string[];
+  provider_types: string[];
+  account_numbers: string[];
+};
+
 export type MonitorRow = {
   monitor_uuid: string;
   monitor_id: string;
@@ -59,6 +79,13 @@ export type MonitorRow = {
   created_at: string;
   updated_at: string;
   last_seen_payload: Record<string, unknown> | null;
+};
+
+export type MonitorEventRow = {
+  monitor_uuid: string;
+  event_type: string;
+  payload: Record<string, unknown> | null;
+  created_at: string;
 };
 
 export type RouteRow = {
@@ -90,6 +117,13 @@ export type ProviderAnalyticsRow = {
   dead_letter_count: number;
 };
 
+export type OperationAnalyticsRow = {
+  provider_type: string;
+  action: string;
+  status: string;
+  count: number;
+};
+
 export type BacklogRow = {
   ticket_id: string;
   provider_type: string;
@@ -119,4 +153,52 @@ export type CollectionJob = {
   error: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type CollectionCollectorField = {
+  name: string;
+  label: string;
+  field_type: string;
+  description: string;
+  required: boolean;
+  default_value: unknown;
+  placeholder: string | null;
+};
+
+export type CollectionCollector = {
+  collector_type: string;
+  label: string;
+  description: string;
+  default_parameters: Record<string, unknown>;
+  example_parameters: Record<string, unknown>;
+  parameters: CollectionCollectorField[];
+};
+
+export type MonitorDetail = {
+  monitor: MonitorRow;
+  recent_events: MonitorEventRow[];
+  recent_routes: RouteRow[];
+  recent_jobs: CollectionJob[];
+  latest_successful_jobs: CollectionJob[];
+  operation_analytics: OperationAnalyticsRow[];
+  backlog: BacklogRow[];
+};
+
+export type ReportFilters = {
+  monitorUuid?: string;
+  environmentLabel?: string;
+  providerType?: string;
+  accountNumber?: string;
+  startAt?: string;
+  endAt?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export type JobFilters = {
+  monitorUuid?: string;
+  status?: string;
+  collectorType?: string;
+  limit?: number;
+  offset?: number;
 };

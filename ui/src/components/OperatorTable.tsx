@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import {
   flexRender,
@@ -38,7 +38,7 @@ export function OperatorTable<TData extends object>({
     getRowId,
   });
 
-  const rows = useMemo(() => table.getRowModel().rows, [table]);
+  const rows = table.getRowModel().rows;
 
   if (rows.length === 0) {
     return <div className="empty-state">{emptyState ?? "No matching records."}</div>;

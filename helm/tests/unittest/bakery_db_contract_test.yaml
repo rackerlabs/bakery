@@ -130,20 +130,20 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/example/bakery:0.1.9
+          value: ghcr.io/example/bakery:0.1.10
         template: templates/bakery-deployment.yaml
 
   - it: reports Bakery version from the deployed Bakery image tag
     set:
       bakery.enabled: true
       bakery.database.createServer: true
-      bakery.image.tag: "0.1.9"
+      bakery.image.tag: "0.1.10"
     asserts:
       - contains:
           path: spec.template.spec.containers[0].env
           content:
             name: BAKERY_APP_VERSION
-            value: "0.1.9"
+            value: "0.1.10"
         template: templates/bakery-deployment.yaml
 
   - it: injects monitor registry secret and timing env vars into api and worker

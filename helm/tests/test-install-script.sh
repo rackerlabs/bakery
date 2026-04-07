@@ -148,7 +148,7 @@ run_with_mocks "${EXISTING_PROVIDER_OUT}" \
   BAKERY_NAMESPACE="env-ns" \
   BAKERY_RELEASE_NAME="bakery" \
   BAKERY_VALUES_FILE="${TMP_DIR}/values.yaml" \
-  BAKERY_IMAGE_TAG="0.1.9" \
+  BAKERY_IMAGE_TAG="0.1.10" \
   BAKERY_HELM_WAIT="true" \
   MOCK_BAKERY_RACKSPACE_SECRET_EXISTS="1" \
   MOCK_BAKERY_AUTH_SECRET_EXISTS="0" \
@@ -165,7 +165,7 @@ assert_contains "--set-string bakery.auth.existingSecret=bakery-secret" "${TMP_D
 assert_contains "--set-string bakery.rackspaceCore.existingSecret=bakery-rackspace-core" "${TMP_DIR}/helm.log"
 assert_contains "--version 0.1.1" "${TMP_DIR}/helm.log"
 assert_contains "-f ${TMP_DIR}/values.yaml" "${TMP_DIR}/helm.log"
-assert_contains "--set-string bakery.image.tag=0.1.9" "${TMP_DIR}/helm.log"
+assert_contains "--set-string bakery.image.tag=0.1.10" "${TMP_DIR}/helm.log"
 assert_contains "--wait" "${TMP_DIR}/helm.log"
 assert_contains "bakery-secret" "${TMP_DIR}/kubectl-created-secrets.log"
 

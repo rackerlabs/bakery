@@ -41,6 +41,35 @@ bakeryctl --help
 cd ui && npm install && npm run dev
 ```
 
+## Operator Console
+
+The Helm chart always deploys the Bakery UI alongside the API and worker. There is no separate UI
+installer or second chart.
+
+Supported UI exposure modes:
+
+- same-host mode: Bakery serves the UI from `/` on the API hostname through `bakery.gateway.*`
+- split-host mode: Bakery serves the UI from its own hostname through `bakery.ui.gateway.*` while
+  API requests continue to target `bakery.ui.apiBaseUrl`
+
+The console now includes:
+
+- an Overview page with live health cards, active jobs, stale monitor counts, and collector
+  activity
+- monitor inventory, monitor detail, route inventory, provider analytics, and operations analytics
+- monitor-name-based collection job queueing with collector-specific forms and live job detail
+- cluster inventory reports with nodes, labels, annotations, storage topology, workload snapshots,
+  Markdown export, and raw JSON export
+- backlog drilldowns with dry-run classification plus operator close and resync actions for
+  eligible tickets
+- default live refresh with 15-second overview polling, 5-second detail polling, and automatic
+  pause when the browser tab is hidden
+
+See [docs/OPERATOR_CONSOLE.md](docs/OPERATOR_CONSOLE.md) for the full operator-console walkthrough,
+[docs/DEPLOY.md](docs/DEPLOY.md) for standalone installation and UI routing, and
+[docs/REMOTE_BAKERY_DEPLOYMENT_GUIDE.md](docs/REMOTE_BAKERY_DEPLOYMENT_GUIDE.md) for the remote
+PoundCake integration flow.
+
 ## Testing
 
 ```bash

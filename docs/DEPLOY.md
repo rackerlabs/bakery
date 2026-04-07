@@ -72,7 +72,58 @@ bakery:
 Auth0 and Azure AD flows follow the same shared/ui/cli split already used in PoundCake:
 `bakery.operatorAuth.auth0.*` and `bakery.operatorAuth.azureAd.*`.
 
-## Minimum Override Shape
+## UI Install Modes
+
+The Bakery chart always deploys these three workloads together:
+
+- `bakery-poundcake-bakery`
+- `bakery-poundcake-bakery-ui`
+- `bakery-poundcake-bakery-worker`
+
+You do not install the UI separately. Pick the exposure mode that fits your environment.
+
+### Same-Host UI
+
+This is the simplest install shape. The UI is served from `/` on the same hostname as the API and
+uses relative `/api/v1/*` calls.
+
+`10-main-overrides.yaml`
+
+```yaml
+fullnameOverride: bakery-poundcake-bakery
+
+bakery:
+  auth:
+    existingSecret: bakery-hmac
+  config:
+    activeProvider: rackspace_core
+    ticketingDryRun: true
+  gateway:
+    enabled: true
+    gatewayName: flex-gateway
+    gatewayNamespace: envoy-gateway
+    listener:
+      name: bakery-https
+      hostname: bakery.example.com
+      port: 443
+      protocol: HTTPS
+      tlsSecretName: bakery-gw-tls-secret
+      allowedNamespaces: All
+      updateIfExists: true
+    hostnames:
+      - bakery.example.com
+  rackspaceCore:
+    existingSecret: bakery-rackspace-core
+    verifySsl: false
+```
+
+In same-host mode, leave `bakery.ui.publicUrl`, `bakery.ui.apiBaseUrl`, and `bakery.ui.gateway.*`
+unset. The API `HTTPRoute` continues to serve the UI backend at `/`.
+
+### Split-Host UI
+
+Use this mode when the UI must live on its own hostname or gateway route while the API remains on a
+separate Bakery hostname.
 
 `10-main-overrides.yaml`
 
@@ -118,6 +169,13 @@ bakery:
 The split UI gateway is attach-only. The chart creates the UI `HTTPRoute`, but the
 `bakery-ui-gateway` Gateway and listener must already exist in the cluster.
 
+In split-host mode:
+
+- `bakery.ui.publicUrl` becomes the UI browser URL
+- `bakery.ui.apiBaseUrl` becomes the API origin for UI calls and auth return flows
+- the API route stops serving the UI backend at `/`
+- the UI runtime config is rendered into `/runtime/config.js`
+
 Put pull secrets in `00-pull-secret-overrides.yaml` when private GHCR pulls are required.
 
 ## Install
@@ -161,9 +219,19 @@ Confirm release state:
 ```bash
 helm ls -n bakery
 kubectl -n bakery get deploy,pods,svc,httproute
-curl -fsS https://bakery-ui.example.net/ | grep -q "Bakery Console"
 curl -fsS https://bakery.example.com/api/v1/health
 ```
+
+Confirm the UI route you chose:
+
+```bash
+curl -fsS https://bakery.example.com/ | grep -q "Bakery Console"
+curl -fsS https://bakery-ui.example.net/ | grep -q "Bakery Console"
+curl -fsS https://bakery-ui.example.net/runtime/config.js
+```
+
+Use the same-host URL when you kept `bakery.ui.gateway.enabled=false`. Use the split-host URL and
+runtime-config check when you enabled `bakery.ui.gateway.enabled=true`.
 
 Confirm the operator control-plane APIs:
 
@@ -197,6 +265,16 @@ bakeryctl --url https://bakery.example.com jobs list
 Open `https://bakery-ui.example.net/`, sign in through the configured operator auth flow, and
 confirm the browser lands back on the UI domain with the Bakery Console loaded while API requests
 continue to target `https://bakery.example.com/api/v1/*`.
+
+Recommended UI smoke checks:
+
+1. Overview loads with live refresh enabled.
+2. Monitors shows current monitor health and a detail rail.
+3. Collection Jobs lets you queue by monitor name instead of UUID.
+4. A `cluster_inventory` result renders node, storage, and workload sections.
+5. Backlog shows dry-run or error classification, and eligible tickets expose operator actions.
+
+The full operator-console walkthrough is documented in [OPERATOR_CONSOLE.md](OPERATOR_CONSOLE.md).
 
 ## Live Provider Validation
 

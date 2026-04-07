@@ -85,8 +85,14 @@ bakery:
     verifySsl: false
 ```
 
-The Bakery chart does not create the split UI Gateway. Provision the
-`bakery-ui-gateway` Gateway and listener out of band, then let the chart attach the UI `HTTPRoute`.
+This remote guide assumes split-host UI mode:
+
+- `https://bakery.example.com` serves the Bakery API
+- `https://bakery-ui.example.net` serves the Bakery operator UI
+
+The Bakery chart still deploys the UI workload automatically. It does not create the split UI
+Gateway. Provision the `bakery-ui-gateway` Gateway, listener, and DNS out of band, then let the
+chart attach the UI `HTTPRoute`.
 
 Install Bakery from the Bakery repo root:
 
@@ -107,6 +113,7 @@ kubectl -n bakery rollout status deploy/bakery-poundcake-bakery --timeout=300s
 kubectl -n bakery rollout status deploy/bakery-poundcake-bakery-ui --timeout=300s
 kubectl -n bakery rollout status deploy/bakery-poundcake-bakery-worker --timeout=300s
 curl -fsS https://bakery-ui.example.net/ | grep -q "Bakery Console"
+curl -fsS https://bakery-ui.example.net/runtime/config.js
 curl -fsS https://bakery.example.com/api/v1/health
 curl -fsS https://bakery.example.com/docs > /dev/null
 curl -fsS https://bakery.example.com/redoc > /dev/null
@@ -186,6 +193,16 @@ kubectl -n bakery exec bakery-poundcake-bakery-mariadb-0 -- \
   mariadb -uroot -p"$(kubectl -n bakery get secret bakery-poundcake-bakery-mariadb-root -o jsonpath='{.data.password}' | base64 -d)" \
   -N -e "USE bakery; SELECT monitor_id, monitor_uuid, status, last_checkin_at, route_sync_required FROM monitors;"
 ```
+
+Open `https://bakery-ui.example.net/` and confirm:
+
+1. the Overview page loads after sign-in
+2. monitor health reflects the PoundCake environment
+3. Collection Jobs can target the PoundCake monitor by name
+4. the latest successful `cluster_inventory` result appears in monitor detail when available
+5. the Backlog page classifies dry-run and errored tickets clearly
+
+For the full operator-console feature map, see [OPERATOR_CONSOLE.md](OPERATOR_CONSOLE.md).
 
 Confirm PoundCake persisted its local monitor state:
 

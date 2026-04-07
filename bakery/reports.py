@@ -612,7 +612,9 @@ def ticket_backlog(
         if not monitor_ids:
             return []
         query = query.filter(Ticket.monitor_uuid.in_(monitor_ids))
-    query = query.filter(or_(~Ticket.state.in_(_OPEN_TICKET_STATES), Ticket.latest_error.is_not(None)))
+    query = query.filter(
+        or_(~Ticket.state.in_(_OPEN_TICKET_STATES), Ticket.latest_error.is_not(None))
+    )
     query = _apply_time_range(query, Ticket.updated_at, start_at=start_at, end_at=end_at)
     rows = (
         query.order_by(Ticket.updated_at.desc(), Ticket.id.desc()).limit(limit).offset(offset).all()

@@ -52,7 +52,9 @@ def ticket_is_dry_run(ticket: Ticket, operations: list[TicketOperation]) -> bool
     provider_ticket_id = str(ticket.provider_ticket_id or "").strip().lower()
     if provider_ticket_id.startswith("dryrun-"):
         return True
-    return any(_provider_response_data(operation).get("dry_run") is True for operation in operations)
+    return any(
+        _provider_response_data(operation).get("dry_run") is True for operation in operations
+    )
 
 
 def ticket_backlog_reason(ticket: Ticket, operations: list[TicketOperation]) -> str:

@@ -488,7 +488,9 @@ def close_ticket_locally(
         provider_response=response_payload,
         last_error=None,
     )
-    requested_state = str(request_payload.get("state") or "closed").strip().lower().replace(" ", "_")
+    requested_state = (
+        str(request_payload.get("state") or "closed").strip().lower().replace(" ", "_")
+    )
     ticket.state = "confirmed_solved" if requested_state == "confirmed_solved" else "closed"
     ticket.latest_error = None
     ticket.updated_at = _now()

@@ -434,9 +434,13 @@ def test_operator_ticket_close_closes_dry_run_ticket_and_removes_it_from_backlog
     assert {item["ticket_id"] for item in backlog.json()} == {"ticket-123"}
 
 
-def test_operator_ticket_find_resyncs_errored_provider_ticket(client: TestClient, monkeypatch) -> None:
+def test_operator_ticket_find_resyncs_errored_provider_ticket(
+    client: TestClient, monkeypatch
+) -> None:
     class _FakeMixer:
-        async def process_request(self, action: str, payload: dict[str, object]) -> dict[str, object]:
+        async def process_request(
+            self, action: str, payload: dict[str, object]
+        ) -> dict[str, object]:
             assert action == "search"
             assert payload["query"] == "number=INC00123"
             return {

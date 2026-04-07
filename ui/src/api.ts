@@ -14,6 +14,8 @@ import type {
   ReportFilters,
   RouteRow,
   SettingsResponse,
+  TicketDetail,
+  TicketOperationList,
 } from "./contracts";
 import { buildApiUrl, usesExternalApiBaseUrl } from "./config";
 
@@ -113,6 +115,29 @@ export const api = {
     request<OperationAnalyticsRow[]>(`/api/v1/reports/operations${reportSearch(filters)}`),
   backlog: (filters: ReportFilters = {}) =>
     request<BacklogRow[]>(`/api/v1/reports/backlog${reportSearch(filters)}`),
+  operatorTicket: (ticketId: string) =>
+    request<TicketDetail>(`/api/v1/operator/tickets/${ticketId}`),
+  operatorTicketOperations: (ticketId: string, limit = 100) =>
+    request<TicketOperationList>(`/api/v1/operator/tickets/${ticketId}/operations${buildSearch({ limit })}`),
+  operatorFindTicket: (ticketId: string) =>
+    request<TicketDetail>(`/api/v1/operator/tickets/${ticketId}/find`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  operatorCloseTicket: (
+    ticketId: string,
+    payload: {
+      resolution_notes?: string;
+      resolution_code?: string;
+      state?: string;
+      source?: string;
+      context?: Record<string, unknown>;
+    },
+  ) =>
+    request(`/api/v1/operator/tickets/${ticketId}/close`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   jobs: (filters: JobFilters = {}) =>
     request<CollectionJob[]>(`/api/v1/collection-jobs${jobSearch(filters)}`),
   job: (jobId: string) => request<CollectionJob>(`/api/v1/collection-jobs/${jobId}`),

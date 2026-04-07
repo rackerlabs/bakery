@@ -411,11 +411,34 @@ def _record_find_operation(
     provider_response: dict[str, Any] | None = None,
     last_error: str | None = None,
 ) -> TicketOperation:
+    return _record_immediate_operation(
+        db,
+        ticket_id=ticket_id,
+        action="find",
+        status_value=status_value,
+        request_payload=request_payload,
+        normalized_payload=normalized_payload,
+        provider_response=provider_response,
+        last_error=last_error,
+    )
+
+
+def _record_immediate_operation(
+    db: Session,
+    *,
+    ticket_id: str,
+    action: str,
+    status_value: str,
+    request_payload: dict[str, Any],
+    normalized_payload: dict[str, Any],
+    provider_response: dict[str, Any] | None = None,
+    last_error: str | None = None,
+) -> TicketOperation:
     now = _now()
     operation = TicketOperation(
         operation_id=str(uuid.uuid4()),
         internal_ticket_id=ticket_id,
-        action="find",
+        action=action,
         status=status_value,
         request_payload=request_payload,
         normalized_payload=normalized_payload,
@@ -432,6 +455,48 @@ def _record_find_operation(
     db.add(operation)
     db.flush()
     return operation
+
+
+def close_ticket_locally(
+    db: Session,
+    *,
+    ticket: Ticket,
+    request_payload: dict[str, Any],
+) -> OperationAcceptedResponse:
+    response_ticket_id = ticket.provider_ticket_id or f"dryrun-{ticket.internal_ticket_id}"
+    response_payload = {
+        "success": True,
+        "ticket_id": response_ticket_id,
+        "data": {
+            "dry_run": True,
+            "source": "operator_console",
+            "closed_locally": True,
+            "ticket": {
+                "ticket_id": ticket.internal_ticket_id,
+                "provider_ticket_id": ticket.provider_ticket_id,
+                "provider_type": ticket.provider_type,
+            },
+        },
+    }
+    operation = _record_immediate_operation(
+        db,
+        ticket_id=ticket.internal_ticket_id,
+        action="close",
+        status_value="succeeded",
+        request_payload=request_payload,
+        normalized_payload=request_payload,
+        provider_response=response_payload,
+        last_error=None,
+    )
+    requested_state = str(request_payload.get("state") or "closed").strip().lower().replace(" ", "_")
+    ticket.state = "confirmed_solved" if requested_state == "confirmed_solved" else "closed"
+    ticket.latest_error = None
+    ticket.updated_at = _now()
+    db.commit()
+    db.refresh(ticket)
+    db.refresh(operation)
+    BAKERY_OPERATIONS_TOTAL.labels(action="close", status="succeeded").inc()
+    return _accepted(operation)
 
 
 def _ticket_response(

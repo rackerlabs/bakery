@@ -63,7 +63,7 @@ def _auth_context() -> AuthContext:
         groups=[],
         role="admin",
         principal_type="user",
-        permissions=["read", "queue_jobs", "manage_auth", "manage_bootstrap"],
+        permissions=["read", "queue_jobs", "manage_backlog", "manage_auth", "manage_bootstrap"],
         session_id="sess-123",
         expires_at="2030-01-01T00:00:00Z",
     )

@@ -27,9 +27,16 @@ ROLE_PRECEDENCE: dict[str, int] = {
 
 ROLE_PERMISSIONS: dict[str, list[str]] = {
     "reader": ["read"],
-    "operator": ["read", "queue_jobs"],
-    "admin": ["read", "queue_jobs", "manage_auth", "manage_bootstrap"],
-    "service": ["read", "queue_jobs", "manage_auth", "manage_bootstrap", "service"],
+    "operator": ["read", "queue_jobs", "manage_backlog"],
+    "admin": ["read", "queue_jobs", "manage_backlog", "manage_auth", "manage_bootstrap"],
+    "service": [
+        "read",
+        "queue_jobs",
+        "manage_backlog",
+        "manage_auth",
+        "manage_bootstrap",
+        "service",
+    ],
 }
 
 AUTH_PROVIDER_LABELS: dict[str, str] = {
@@ -152,6 +159,10 @@ def permissions_for_role(role: str, *, is_superuser: bool = False) -> list[str]:
     if is_superuser and "superuser" not in permissions:
         permissions.append("superuser")
     return permissions
+
+
+def has_permission(context: AuthContext, permission: str) -> bool:
+    return permission in context.permissions or context.is_superuser
 
 
 def is_authorized_for_role(context: AuthContext, required_role: str) -> bool:

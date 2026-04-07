@@ -492,6 +492,10 @@ class TicketBacklogResponse(BaseModel):
     latest_error: str | None = None
     created_at: datetime
     updated_at: datetime
+    is_dry_run: bool = False
+    backlog_reason: str = "open"
+    can_close: bool = False
+    can_resync: bool = False
 
 
 class CollectionCollectorFieldResponse(BaseModel):

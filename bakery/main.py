@@ -19,6 +19,7 @@ from bakery.api.health import router as health_router
 from bakery.api.mixers import router as mixers_router
 from bakery.api.monitors import router as monitors_router
 from bakery.api.operator_auth import router as operator_auth_router
+from bakery.api.operator_tickets import router as operator_tickets_router
 from bakery.api.reports import router as reports_router
 from bakery.api.settings import router as settings_router
 from bakery.api.tickets import router as tickets_router
@@ -121,6 +122,10 @@ tags_metadata = [
         ),
     },
     {
+        "name": "operator-tickets",
+        "description": "Operator-authenticated ticket inspection and backlog-management endpoints.",
+    },
+    {
         "name": "mixers",
         "description": (
             "Discover and validate ticketing system integrations. "
@@ -197,6 +202,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 app.include_router(health_router, prefix=settings.api_prefix, tags=["health"])
 app.include_router(settings_router, prefix=settings.api_prefix, tags=["settings"])
 app.include_router(operator_auth_router, prefix=settings.api_prefix, tags=["auth"])
+app.include_router(operator_tickets_router, prefix=settings.api_prefix, tags=["operator-tickets"])
 app.include_router(admin_router, prefix=settings.api_prefix, tags=["admin"])
 app.include_router(monitors_router, prefix=settings.api_prefix, tags=["monitors"])
 app.include_router(reports_router, prefix=settings.api_prefix, tags=["reports"])

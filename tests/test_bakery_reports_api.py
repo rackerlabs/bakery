@@ -13,6 +13,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from bakery.api import tickets as ticket_api
 from bakery.database import Base, get_db
 from bakery.models import (
     CollectionJob,
@@ -62,7 +63,7 @@ def _auth_context() -> AuthContext:
         groups=[],
         role="admin",
         principal_type="user",
-        permissions=["read", "queue_jobs"],
+        permissions=["read", "queue_jobs", "manage_backlog"],
         session_id="session-123",
         expires_at="2030-01-01T00:00:00Z",
     )
@@ -171,6 +172,18 @@ def _seed_reporting_data(db: Session) -> None:
         )
     )
     db.add(
+        Ticket(
+            internal_ticket_id="ticket-dryrun",
+            provider_type="rackspace_core",
+            provider_ticket_id="dryrun-ticket-dryrun",
+            monitor_uuid=monitor_one.monitor_uuid,
+            state="open",
+            latest_error=None,
+            created_at=now - timedelta(hours=2),
+            updated_at=now - timedelta(minutes=6),
+        )
+    )
+    db.add(
         TicketOperation(
             operation_id="op-123",
             internal_ticket_id="ticket-123",
@@ -182,6 +195,26 @@ def _seed_reporting_data(db: Session) -> None:
             created_at=now - timedelta(minutes=12),
             updated_at=now - timedelta(minutes=8),
             last_error="provider timeout",
+        )
+    )
+    db.add(
+        TicketOperation(
+            operation_id="op-dryrun-create",
+            internal_ticket_id="ticket-dryrun",
+            action="create",
+            status="succeeded",
+            request_payload={"title": "Dry-run ticket"},
+            normalized_payload={"title": "Dry-run ticket"},
+            provider_response={
+                "success": True,
+                "ticket_id": "dryrun-ticket-dryrun",
+                "data": {"dry_run": True, "source": "worker"},
+            },
+            attempt_count=1,
+            max_attempts=1,
+            created_at=now - timedelta(hours=2),
+            updated_at=now - timedelta(hours=2),
+            completed_at=now - timedelta(hours=2),
         )
     )
 
@@ -314,6 +347,7 @@ def test_collection_job_collectors_endpoint_returns_catalog_metadata(client: Tes
     assert cluster_inventory["label"] == "Cluster inventory"
     assert cluster_inventory["default_parameters"]["limit"] == 50
     assert cluster_inventory["parameters"][0]["name"] == "namespace"
+    assert "all cluster nodes" in cluster_inventory["description"]
 
 
 def test_report_filter_options_endpoint_returns_human_friendly_filter_data(
@@ -358,5 +392,98 @@ def test_monitor_detail_endpoint_returns_recent_activity_and_latest_successes(
         if job["collector_type"] == "monitor_diagnostics"
     )
     assert latest_diagnostics["job_id"] == "job-monitor-new"
-    assert payload["operation_analytics"][0]["status"] == "failed"
-    assert payload["backlog"][0]["ticket_id"] == "ticket-123"
+    assert {item["status"] for item in payload["operation_analytics"]} == {"failed", "succeeded"}
+    assert {item["ticket_id"] for item in payload["backlog"]} == {
+        "ticket-123",
+        "ticket-dryrun",
+    }
+
+
+def test_backlog_report_classifies_dry_run_rows_and_actions(client: TestClient) -> None:
+    response = client.get("/api/v1/reports/backlog")
+
+    assert response.status_code == 200
+    payload = response.json()
+    by_ticket = {item["ticket_id"]: item for item in payload}
+    assert by_ticket["ticket-dryrun"]["is_dry_run"] is True
+    assert by_ticket["ticket-dryrun"]["backlog_reason"] == "dry_run"
+    assert by_ticket["ticket-dryrun"]["can_close"] is True
+    assert by_ticket["ticket-dryrun"]["can_resync"] is False
+    assert by_ticket["ticket-123"]["is_dry_run"] is False
+    assert by_ticket["ticket-123"]["backlog_reason"] == "error"
+    assert by_ticket["ticket-123"]["can_close"] is True
+    assert by_ticket["ticket-123"]["can_resync"] is True
+
+
+def test_operator_ticket_close_closes_dry_run_ticket_and_removes_it_from_backlog(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/operator/tickets/ticket-dryrun/close",
+        json={"resolution_notes": "Synthetic dry-run ticket retired", "state": "closed"},
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["ticket_id"] == "ticket-dryrun"
+    assert payload["action"] == "close"
+    assert payload["status"] == "succeeded"
+
+    backlog = client.get("/api/v1/reports/backlog")
+    assert backlog.status_code == 200
+    assert {item["ticket_id"] for item in backlog.json()} == {"ticket-123"}
+
+
+def test_operator_ticket_find_resyncs_errored_provider_ticket(client: TestClient, monkeypatch) -> None:
+    class _FakeMixer:
+        async def process_request(self, action: str, payload: dict[str, object]) -> dict[str, object]:
+            assert action == "search"
+            assert payload["query"] == "number=INC00123"
+            return {
+                "success": True,
+                "data": {"results": [{"number": "INC00123", "state": "2"}]},
+            }
+
+    monkeypatch.setattr(ticket_api, "get_mixer", lambda provider: _FakeMixer())
+
+    response = client.post("/api/v1/operator/tickets/ticket-123/find")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ticket_id"] == "ticket-123"
+    assert payload["data_source"] == "provider"
+    assert payload["latest_error"] is None
+
+    backlog = client.get("/api/v1/reports/backlog")
+    assert backlog.status_code == 200
+    by_ticket = {item["ticket_id"]: item for item in backlog.json()}
+    assert by_ticket["ticket-123"]["can_resync"] is False
+    assert by_ticket["ticket-123"]["backlog_reason"] == "open"
+
+
+def test_operator_ticket_endpoints_require_backlog_management_permission(
+    client: TestClient,
+) -> None:
+    app = client.app
+
+    def _reader_context() -> AuthContext:
+        return AuthContext(
+            provider="local",
+            subject_id="reader-1",
+            username="reader",
+            display_name="Reader",
+            groups=[],
+            role="reader",
+            principal_type="user",
+            permissions=["read"],
+            session_id="session-reader",
+            expires_at="2030-01-01T00:00:00Z",
+        )
+
+    app.dependency_overrides[require_operator] = _reader_context
+    try:
+        response = client.get("/api/v1/operator/tickets/ticket-123")
+    finally:
+        app.dependency_overrides[require_operator] = _auth_context
+
+    assert response.status_code == 403

@@ -865,6 +865,78 @@ label {
   gap: 8px;
 }
 
+.inventory-highlight-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.inventory-highlight {
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: rgba(230, 114, 61, 0.09);
+  border: 1px solid rgba(230, 114, 61, 0.14);
+  color: var(--ink);
+}
+
+.inventory-search {
+  display: grid;
+  gap: 8px;
+}
+
+.metadata-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.metadata-card {
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(23, 33, 43, 0.08);
+  background: rgba(23, 33, 43, 0.03);
+  overflow: hidden;
+}
+
+.metadata-card summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.metadata-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.metadata-card summary span {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.metadata-sections {
+  display: grid;
+  gap: 12px;
+  padding: 0 16px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.metadata-sections h4 {
+  margin-bottom: 8px;
+}
+
+.metadata-sections pre {
+  margin: 0;
+  white-space: pre-wrap;
+  wzone-break: break-word;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.7);
+  padding: 12px;
+  border: 1px solid rgba(23, 33, 43, 0.08);
+  font-size: 12px;
+}
+
 .json-view {
   margin: 0;
   padding: 18px;

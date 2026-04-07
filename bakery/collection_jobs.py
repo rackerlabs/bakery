@@ -30,7 +30,10 @@ COLLECTOR_CATALOG: dict[str, dict[str, object]] = {
     "cluster_inventory": {
         "collector_type": "cluster_inventory",
         "label": "Cluster inventory",
-        "description": "Snapshot pods, deployments, statefulsets, and services from a target namespace.",
+        "description": (
+            "Collect a full environment inventory: all cluster nodes plus storage topology, "
+            "then pair it with a namespace-scoped workload snapshot and report."
+        ),
         "default_parameters": {"limit": 50},
         "example_parameters": {"namespace": "rackspace", "limit": 25},
         "parameters": [
@@ -38,7 +41,10 @@ COLLECTOR_CATALOG: dict[str, dict[str, object]] = {
                 "name": "namespace",
                 "label": "Namespace",
                 "field_type": "text",
-                "description": "Namespace to inspect. Defaults to the monitor namespace when omitted.",
+                "description": (
+                    "Namespace to inspect for workload and PVC data. Node, PV, and storage class "
+                    "inventory is always cluster-wide."
+                ),
                 "required": False,
                 "default_value": "",
                 "placeholder": "rackspace",
@@ -47,7 +53,10 @@ COLLECTOR_CATALOG: dict[str, dict[str, object]] = {
                 "name": "limit",
                 "label": "Row limit",
                 "field_type": "number",
-                "description": "Maximum resources to fetch for each Kubernetes collection.",
+                "description": (
+                    "Maximum workload and PVC rows to include from the selected namespace. "
+                    "Cluster-wide node and storage inventory is not truncated by this value."
+                ),
                 "required": False,
                 "default_value": 50,
                 "placeholder": "50",

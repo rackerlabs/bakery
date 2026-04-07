@@ -135,6 +135,46 @@ export type BacklogRow = {
   latest_error: string | null;
   created_at: string;
   updated_at: string;
+  is_dry_run: boolean;
+  backlog_reason: string;
+  can_close: boolean;
+  can_resync: boolean;
+};
+
+export type TicketDetail = {
+  ticket_id: string;
+  provider_type: string;
+  provider_ticket_id: string | null;
+  state: string;
+  latest_error: string | null;
+  created_at: string;
+  updated_at: string;
+  data_source: string;
+  ticket_data: Record<string, unknown> | null;
+  last_sync_operation_id: string | null;
+  last_sync_at: string | null;
+};
+
+export type TicketOperation = {
+  operation_id: string;
+  ticket_id: string;
+  action: string;
+  status: string;
+  attempt_count: number;
+  max_attempts: number;
+  next_attempt_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  last_error: string | null;
+  provider_response: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TicketOperationList = {
+  ticket_id: string;
+  operations: TicketOperation[];
+  count: number;
 };
 
 export type CollectionJob = {

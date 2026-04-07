@@ -47,6 +47,7 @@ import type {
   RouteRow,
   SettingsResponse,
 } from "./contracts";
+import { backlogActionState, backlogReasonLabel, backlogReasonMessage } from "./lib/backlog";
 import { buildCollectorParameters, getCollectorByType, JOB_STATUS_COPY } from "./lib/collectors";
 import {
   formatCount,
@@ -165,6 +166,10 @@ function monitorDescriptor(monitor: MonitorFilterOption | MonitorRow | null | un
   }
   const parts = [monitor.environment_label, monitor.cluster_name, monitor.namespace].filter(Boolean);
   return parts.length > 0 ? parts.join(" / ") : "No environment metadata";
+}
+
+function hasPermission(me: AuthMeResponse | null, permission: string): boolean {
+  return Boolean(me?.permissions.includes(permission) || me?.is_superuser);
 }
 
 function mergeFilters(filters: ConsoleFilters, extra: Partial<ReportFilters> = {}): ReportFilters {
@@ -1492,13 +1497,18 @@ function BacklogPage({
   fastPollMs,
   selectedTicketId,
   setSelectedTicketId,
+  canManageBacklog,
 }: {
   filters: ConsoleFilters;
   slowPollMs: number | false;
   fastPollMs: number | false;
   selectedTicketId?: string;
   setSelectedTicketId: (ticketId?: string) => void;
+  canManageBacklog: boolean;
 }) {
+  const queryClient = useQueryClient();
+  const [closeNotes, setCloseNotes] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
   const backlogQuery = useQuery({
     queryKey: ["backlog", filters],
     queryFn: () => api.backlog(mergeFilters(filters, { limit: 250 })),
@@ -1519,14 +1529,79 @@ function BacklogPage({
     enabled: Boolean(selectedTicket?.monitor_uuid),
     refetchInterval: fastPollMs,
   });
+  const ticketDetailQuery = useQuery({
+    queryKey: ["operator-ticket", selectedTicketId],
+    queryFn: () => api.operatorTicket(selectedTicketId as string),
+    enabled: Boolean(selectedTicketId) && canManageBacklog,
+    refetchInterval: fastPollMs,
+  });
+  const ticketOperationsQuery = useQuery({
+    queryKey: ["operator-ticket-operations", selectedTicketId],
+    queryFn: () => api.operatorTicketOperations(selectedTicketId as string, 25),
+    enabled: Boolean(selectedTicketId) && canManageBacklog,
+    refetchInterval: fastPollMs,
+  });
+  const closeTicketMutation = useMutation({
+    mutationFn: (ticket: BacklogRow) =>
+      api.operatorCloseTicket(ticket.ticket_id, {
+        resolution_notes: closeNotes.trim() || undefined,
+        state: "closed",
+        source: "bakery-ui",
+        context: {
+          actor: "operator_console",
+          backlog_reason: ticket.backlog_reason,
+        },
+      }),
+    onSuccess: async () => {
+      setActionError(null);
+      setCloseNotes("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["backlog"] }),
+        queryClient.invalidateQueries({ queryKey: ["operator-ticket"] }),
+        queryClient.invalidateQueries({ queryKey: ["operator-ticket-operations"] }),
+        queryClient.invalidateQueries({ queryKey: ["monitor-detail"] }),
+      ]);
+    },
+    onError: (error) => {
+      setActionError(getErrorMessage(error));
+    },
+  });
+  const resyncTicketMutation = useMutation({
+    mutationFn: (ticketId: string) => api.operatorFindTicket(ticketId),
+    onSuccess: async () => {
+      setActionError(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["backlog"] }),
+        queryClient.invalidateQueries({ queryKey: ["operator-ticket"] }),
+        queryClient.invalidateQueries({ queryKey: ["operator-ticket-operations"] }),
+      ]);
+    },
+    onError: (error) => {
+      setActionError(getErrorMessage(error));
+    },
+  });
 
   useEffect(() => {
-    if (!selectedTicketId && backlogQuery.data && backlogQuery.data.length > 0) {
+    if (!backlogQuery.data || backlogQuery.data.length === 0) {
+      return;
+    }
+    if (!selectedTicketId) {
+      setSelectedTicketId(backlogQuery.data[0].ticket_id);
+      return;
+    }
+    if (!backlogQuery.data.some((ticket) => ticket.ticket_id === selectedTicketId)) {
       setSelectedTicketId(backlogQuery.data[0].ticket_id);
     }
   }, [backlogQuery.data, selectedTicketId, setSelectedTicketId]);
 
+  useEffect(() => {
+    setCloseNotes("");
+    setActionError(null);
+  }, [selectedTicketId]);
+
   const relatedJobs = selectedTicket ? findRelatedTicketContextJobs(ticketContextQuery.data ?? [], selectedTicket) : [];
+  const actionState = selectedTicket ? backlogActionState(selectedTicket) : null;
+  const latestOperations = ticketOperationsQuery.data?.operations ?? [];
 
   const columns = useMemo<ColumnDef<BacklogRow>[]>(
     () => [
@@ -1550,6 +1625,11 @@ function BacklogPage({
         header: "State",
         accessorKey: "state",
         cell: ({ row }) => <StatusBadge status={row.original.state} />,
+      },
+      {
+        header: "Reason",
+        accessorKey: "backlog_reason",
+        cell: ({ row }) => <span className="plain-badge">{backlogReasonLabel(row.original.backlog_reason)}</span>,
       },
       {
         header: "Latest error",
@@ -1630,8 +1710,17 @@ function BacklogPage({
                     value={selectedTicket.provider_ticket_id || "None"}
                     tone={selectedTicket.provider_ticket_id ? "default" : "warning"}
                   />
+                  <MetricCard
+                    label="Backlog reason"
+                    value={backlogReasonLabel(selectedTicket.backlog_reason)}
+                    tone={selectedTicket.is_dry_run ? "warning" : selectedTicket.backlog_reason === "error" ? "danger" : "default"}
+                  />
                 </div>
                 <div className="callout-stack">
+                  <div className={`inline-alert ${selectedTicket.is_dry_run ? "warning" : selectedTicket.backlog_reason === "error" ? "danger" : "info"}`}>
+                    <strong>{selectedTicket.is_dry_run ? "Dry-run ticket" : "Backlog guidance"}</strong>
+                    <span>{backlogReasonMessage(selectedTicket)}</span>
+                  </div>
                   {selectedTicket.latest_error ? (
                     <InlineError title="Latest ticket error" message={selectedTicket.latest_error} />
                   ) : (
@@ -1641,6 +1730,124 @@ function BacklogPage({
                     </div>
                   )}
                 </div>
+              </section>
+
+              <section className="detail-card">
+                <div className="section-header">
+                  <div>
+                    <h3>Ticket management</h3>
+                    <p className="subtle-copy">Operator actions are intentionally narrow in this first pass: dry-run and error tickets only.</p>
+                  </div>
+                </div>
+                {!canManageBacklog ? (
+                  <EmptyPanel
+                    title="No management permission"
+                    message="Your operator role can inspect backlog detail here, but only users with manage_backlog permission can resync or close tickets."
+                  />
+                ) : (
+                  <div className="callout-stack">
+                    {ticketDetailQuery.isError ? (
+                      <InlineError title="Ticket detail unavailable" message={getErrorMessage(ticketDetailQuery.error)} />
+                    ) : ticketDetailQuery.data ? (
+                      <div className="inline-alert info">
+                        <strong>Current Bakery ticket state</strong>
+                        <span>
+                          {ticketDetailQuery.data.state} via {ticketDetailQuery.data.data_source}
+                          {ticketDetailQuery.data.last_sync_at ? ` · last sync ${formatRelativeTime(ticketDetailQuery.data.last_sync_at)}` : ""}
+                        </span>
+                      </div>
+                    ) : null}
+                    {actionError ? <InlineError title="Ticket action failed" message={actionError} /> : null}
+                    {actionState?.canClose ? (
+                      <label>
+                        Resolution notes
+                        <textarea
+                          rows={4}
+                          value={closeNotes}
+                          onChange={(event) => setCloseNotes(event.target.value)}
+                          placeholder={
+                            selectedTicket.is_dry_run
+                              ? "Document why this synthetic dry-run ticket is safe to retire."
+                              : "Add closure context for operators reviewing this Bakery backlog item."
+                          }
+                        />
+                      </label>
+                    ) : null}
+                    <div className="detail-actions">
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        disabled={!actionState?.canResync || resyncTicketMutation.isPending}
+                        onClick={() => {
+                          setActionError(null);
+                          void resyncTicketMutation.mutateAsync(selectedTicket.ticket_id);
+                        }}
+                      >
+                        {resyncTicketMutation.isPending ? "Resyncing…" : "Resync provider state"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!actionState?.canClose || closeTicketMutation.isPending}
+                        onClick={() => {
+                          setActionError(null);
+                          void closeTicketMutation.mutateAsync(selectedTicket);
+                        }}
+                      >
+                        {closeTicketMutation.isPending
+                          ? "Closing…"
+                          : selectedTicket.is_dry_run
+                            ? "Close dry-run ticket"
+                            : "Close ticket"}
+                      </button>
+                    </div>
+                    {actionState?.isReadOnly ? (
+                      <div className="inline-alert info">
+                        <strong>Read-only backlog item</strong>
+                        <span>Healthy provider-backed tickets remain read-only in this first management pass.</span>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </section>
+
+              <section className="detail-card">
+                <div className="section-header">
+                  <div>
+                    <h3>Recent ticket operations</h3>
+                    <p className="subtle-copy">The newest Bakery-side ticket actions and sync attempts for this backlog item.</p>
+                  </div>
+                </div>
+                {!canManageBacklog ? (
+                  <EmptyPanel
+                    title="Operations hidden"
+                    message="Ticket operation history is available to operators with manage_backlog permission."
+                  />
+                ) : ticketOperationsQuery.isLoading ? (
+                  <LoadingScreen label="Loading ticket operations" />
+                ) : ticketOperationsQuery.isError ? (
+                  <InlineError title="Ticket operations unavailable" message={getErrorMessage(ticketOperationsQuery.error)} />
+                ) : latestOperations.length === 0 ? (
+                  <EmptyPanel title="No ticket operations yet" message="Bakery has not recorded any action history for this backlog item." />
+                ) : (
+                  <div className="event-list">
+                    {latestOperations.map((operation) => (
+                      <article className="event-row static" key={operation.operation_id}>
+                        <div className="event-row-main">
+                          <div className="table-primary">
+                            <strong>{humanizeIdentifier(operation.action)}</strong>
+                            <span>{formatDateTime(operation.created_at)}</span>
+                          </div>
+                          <StatusBadge status={operation.status} />
+                        </div>
+                        <small>
+                          Attempts {operation.attempt_count}/{operation.max_attempts}
+                          {operation.completed_at ? ` · completed ${formatRelativeTime(operation.completed_at)}` : ""}
+                        </small>
+                        {operation.last_error ? <span>{operation.last_error}</span> : null}
+                      </article>
+                    ))}
+                  </div>
+                )}
               </section>
 
               <section className="detail-card">
@@ -2203,6 +2410,7 @@ function ConsoleShell({
   const slowPollMs = activePolling ? PAGE_POLL_INTERVAL_MS : false;
   const fastPollMs = activePolling ? DETAIL_POLL_INTERVAL_MS : false;
   const currentNav = NAV_ITEMS.find((item) => location.pathname.startsWith(item.to)) ?? NAV_ITEMS[0];
+  const canManageBacklog = hasPermission(me, "manage_backlog");
 
   function updateSearchParam(key: string, value?: string) {
     const next = new URLSearchParams(searchParams);
@@ -2413,6 +2621,7 @@ function ConsoleShell({
                 fastPollMs={fastPollMs}
                 selectedTicketId={selectedTicketId}
                 setSelectedTicketId={(value) => updateSearchParam("ticketDetail", value)}
+                canManageBacklog={canManageBacklog}
               />
             }
           />

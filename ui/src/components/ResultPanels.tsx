@@ -1,5 +1,6 @@
 import type { CollectionJob } from "../contracts";
 import { formatDateTime, formatCount } from "../lib/format";
+import { ClusterInventoryReport } from "./ClusterInventoryReport";
 import { JsonPanel } from "./JsonPanel";
 import { StatusBadge } from "./StatusBadge";
 
@@ -87,58 +88,6 @@ function DiagnosticsResult({ result }: { result: Record<string, unknown> }) {
   );
 }
 
-function ClusterInventoryResult({ result }: { result: Record<string, unknown> }) {
-  const pods = Array.isArray(result.pods) ? (result.pods as Array<Record<string, unknown>>) : [];
-  const deployments = Array.isArray(result.deployments)
-    ? (result.deployments as Array<Record<string, unknown>>)
-    : [];
-  const statefulsets = Array.isArray(result.statefulsets)
-    ? (result.statefulsets as Array<Record<string, unknown>>)
-    : [];
-  const services = Array.isArray(result.services)
-    ? (result.services as Array<Record<string, unknown>>)
-    : [];
-
-  return (
-    <div className="result-stack">
-      <div className="metric-row">
-        <article className="inline-metric">
-          <span>Namespace</span>
-          <strong>{String(result.namespace ?? "default")}</strong>
-        </article>
-        <article className="inline-metric">
-          <span>Pods</span>
-          <strong>{formatCount(Number(result.pod_count ?? 0))}</strong>
-        </article>
-        <article className="inline-metric">
-          <span>Deployments</span>
-          <strong>{formatCount(Number(result.deployment_count ?? 0))}</strong>
-        </article>
-        <article className="inline-metric">
-          <span>Services</span>
-          <strong>{formatCount(Number(result.service_count ?? 0))}</strong>
-        </article>
-      </div>
-      <section className="detail-card">
-        <h3>Pods</h3>
-        {renderRows(pods, "No pods returned.")}
-      </section>
-      <section className="detail-card">
-        <h3>Deployments</h3>
-        {renderRows(deployments, "No deployments returned.")}
-      </section>
-      <section className="detail-card">
-        <h3>StatefulSets</h3>
-        {renderRows(statefulsets, "No statefulsets returned.")}
-      </section>
-      <section className="detail-card">
-        <h3>Services</h3>
-        {renderRows(services, "No services returned.")}
-      </section>
-    </div>
-  );
-}
-
 function TicketContextResult({ result }: { result: Record<string, unknown> }) {
   const orders = Array.isArray(result.orders) ? (result.orders as Array<Record<string, unknown>>) : [];
   const communications = Array.isArray(result.communications)
@@ -190,7 +139,7 @@ export function CollectionJobResultPanel({ job }: { job: CollectionJob }) {
       {job.status === "succeeded" ? (
         <>
           {job.collector_type === "monitor_diagnostics" ? <DiagnosticsResult result={result} /> : null}
-          {job.collector_type === "cluster_inventory" ? <ClusterInventoryResult result={result} /> : null}
+          {job.collector_type === "cluster_inventory" ? <ClusterInventoryReport result={result} /> : null}
           {job.collector_type === "ticket_context" ? <TicketContextResult result={result} /> : null}
         </>
       ) : null}

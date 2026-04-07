@@ -66,6 +66,38 @@ export function formatCount(value: number): string {
   return new Intl.NumberFormat().format(value);
 }
 
+export function formatBytes(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "Unknown";
+  }
+  if (value === 0) {
+    return "0 B";
+  }
+  const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+  const sign = value < 0 ? -1 : 1;
+  let scaled = Math.abs(value);
+  let unitIndex = 0;
+  while (scaled >= 1024 && unitIndex < units.length - 1) {
+    scaled /= 1024;
+    unitIndex += 1;
+  }
+  const digits = scaled >= 10 || unitIndex === 0 ? 0 : 1;
+  return `${sign < 0 ? "-" : ""}${scaled.toFixed(digits)} ${units[unitIndex]}`;
+}
+
+export function formatCpuMillicores(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "Unknown";
+  }
+  if (Math.abs(value) >= 1000 && value % 1000 === 0) {
+    return `${value / 1000} cores`;
+  }
+  if (Math.abs(value) >= 1000) {
+    return `${(value / 1000).toFixed(1)} cores`;
+  }
+  return `${Math.round(value)}m`;
+}
+
 export function humanizeIdentifier(value: string): string {
   return value.replace(/_/g, " ");
 }

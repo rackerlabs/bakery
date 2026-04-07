@@ -19,6 +19,7 @@ from bakery.models import (
     Ticket,
     TicketOperation,
 )
+from bakery.ticket_backlog import build_ticket_backlog_response, load_ticket_operations_map
 from bakery.schemas import (
     CollectionJobResponse,
     MonitorEventResponse,
@@ -34,6 +35,7 @@ from bakery.schemas import (
 )
 
 QueryT = TypeVar("QueryT", bound=Query[Any])
+_OPEN_TICKET_STATES = ("closed", "confirmed_solved")
 
 
 def _apply_time_range(
@@ -167,7 +169,7 @@ def report_overview(
         monitors_total=monitors_total,
         monitors_healthy=monitors_healthy,
         monitors_unreachable=monitors_unreachable,
-        open_tickets=ticket_query.filter(Ticket.state != "closed").count(),
+        open_tickets=ticket_query.filter(~Ticket.state.in_(_OPEN_TICKET_STATES)).count(),
         queued_operations=operation_query.filter(TicketOperation.status == "queued").count(),
         failed_operations=operation_query.filter(TicketOperation.status == "failed").count(),
         dead_letter_operations=operation_query.filter(
@@ -482,7 +484,7 @@ def provider_analytics(
     ticket_query = db.query(
         Ticket.provider_type,
         func.count(Ticket.id),
-        func.sum(case((Ticket.state != "closed", 1), else_=0)),
+        func.sum(case((~Ticket.state.in_(_OPEN_TICKET_STATES), 1), else_=0)),
     )
     if monitor_ids:
         ticket_query = ticket_query.filter(Ticket.monitor_uuid.in_(monitor_ids))
@@ -610,23 +612,20 @@ def ticket_backlog(
         if not monitor_ids:
             return []
         query = query.filter(Ticket.monitor_uuid.in_(monitor_ids))
-    query = query.filter(or_(Ticket.state != "closed", Ticket.latest_error.is_not(None)))
+    query = query.filter(or_(~Ticket.state.in_(_OPEN_TICKET_STATES), Ticket.latest_error.is_not(None)))
     query = _apply_time_range(query, Ticket.updated_at, start_at=start_at, end_at=end_at)
     rows = (
         query.order_by(Ticket.updated_at.desc(), Ticket.id.desc()).limit(limit).offset(offset).all()
     )
+    operations_by_ticket = load_ticket_operations_map(
+        db,
+        ticket_ids=[ticket.internal_ticket_id for ticket, _monitor in rows],
+    )
     return [
-        TicketBacklogResponse(
-            ticket_id=ticket.internal_ticket_id,
-            provider_type=ticket.provider_type,
-            provider_ticket_id=ticket.provider_ticket_id,
-            monitor_uuid=ticket.monitor_uuid,
-            monitor_id=(None if monitor is None else monitor.monitor_id),
-            environment_label=(None if monitor is None else monitor.environment_label),
-            state=ticket.state,
-            latest_error=ticket.latest_error,
-            created_at=ticket.created_at,
-            updated_at=ticket.updated_at,
+        build_ticket_backlog_response(
+            ticket,
+            monitor,
+            operations_by_ticket.get(ticket.internal_ticket_id, []),
         )
         for ticket, monitor in rows
     ]

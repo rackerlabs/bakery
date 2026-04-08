@@ -254,6 +254,47 @@ def _select_provider_ticket(
     return None
 
 
+def _normalized_provider_ticket_state(
+    provider: str,
+    matched_ticket: dict[str, Any] | None,
+    *,
+    current_state: str,
+) -> str:
+    if not isinstance(matched_ticket, dict):
+        return current_state
+
+    provider = str(provider or "").strip().lower()
+    fields = _as_dict(matched_ticket.get("fields"))
+    field_status = _as_dict(fields.get("status"))
+    status_category = _as_dict(field_status.get("statusCategory"))
+    raw_state = _stringify(
+        _first_non_empty(
+            matched_ticket.get("state"),
+            matched_ticket.get("status"),
+            field_status.get("name"),
+            status_category.get("name"),
+        )
+    )
+    if raw_state is None:
+        return current_state
+
+    normalized = raw_state.strip().lower().replace(" ", "_")
+    if provider == "rackspace_core":
+        confirmed = (
+            str(settings.bakery_rackspace_confirmed_solved_status or "confirmed solved")
+            .strip()
+            .lower()
+            .replace(" ", "_")
+        )
+        if normalized in {confirmed, "confirmed_solved", "confirm_solved"}:
+            return "confirmed_solved"
+        return normalized
+
+    if normalized in {"resolved", "closed", "done", "solved", "completed"}:
+        return "closed"
+    return normalized
+
+
 def _latest_find_operation(operations: list[TicketOperation]) -> TicketOperation | None:
     for operation in operations:
         if operation.action == "find" and operation.status == "succeeded":
@@ -913,6 +954,12 @@ async def find_ticket_request(
         provider_response=provider_response,
         last_error=error_message,
     )
+    if is_success:
+        ticket.state = _normalized_provider_ticket_state(
+            provider,
+            matched_ticket,
+            current_state=str(ticket.state or "").strip().lower(),
+        )
     ticket.latest_error = error_message
     ticket.updated_at = _now()
     db.commit()

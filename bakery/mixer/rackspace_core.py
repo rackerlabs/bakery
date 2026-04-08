@@ -695,11 +695,11 @@ class RackspaceCoreMixer(BaseMixer):
         attributes = data.get(
             "attributes",
             [
-                "ticket_number",
+                "number",
                 "subject",
-                "status",
-                "queue",
-                "created_date",
+                "status.name",
+                "is_closed",
+                "is_closeable",
             ],
         )
 

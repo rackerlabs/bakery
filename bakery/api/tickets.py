@@ -265,12 +265,15 @@ def _normalized_provider_ticket_state(
 
     provider = str(provider or "").strip().lower()
     fields = _as_dict(matched_ticket.get("fields"))
+    direct_status = _as_dict(matched_ticket.get("status"))
     field_status = _as_dict(fields.get("status"))
     status_category = _as_dict(field_status.get("statusCategory"))
     raw_state = _stringify(
         _first_non_empty(
             matched_ticket.get("state"),
             matched_ticket.get("status"),
+            matched_ticket.get("status.name"),
+            direct_status.get("name"),
             field_status.get("name"),
             status_category.get("name"),
         )
@@ -415,7 +418,10 @@ def _build_provider_find_payload(
 
     provider = str(ticket.provider_type or settings.active_provider or "").strip().lower()
     if provider == "rackspace_core":
-        return {"ticket_number": provider_ticket_id}
+        return {
+            "ticket_number": provider_ticket_id,
+            "attributes": ["number", "subject", "status.name", "is_closed", "is_closeable"],
+        }
     if provider == "servicenow":
         return {"query": f"number={provider_ticket_id}", "limit": 1, "offset": 0}
     if provider == "jira":

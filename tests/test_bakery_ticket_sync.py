@@ -63,14 +63,17 @@ async def test_find_ticket_request_persists_confirmed_solved_state(
             self, action: str, payload: dict[str, object]
         ) -> dict[str, object]:
             assert action == "search"
-            assert payload == {"ticket_number": "260331-02458"}
+            assert payload == {
+                "ticket_number": "260331-02458",
+                "attributes": ["number", "subject", "status.name", "is_closed", "is_closeable"],
+            }
             return {
                 "success": True,
                 "data": {
                     "results": [
                         {
-                            "ticket_number": "260331-02458",
-                            "status": "Confirm Solved",
+                            "number": "260331-02458",
+                            "status.name": "Confirm Solved",
                         }
                     ]
                 },

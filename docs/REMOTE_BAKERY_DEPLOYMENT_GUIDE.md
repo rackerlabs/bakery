@@ -13,8 +13,8 @@ Use this sequence:
 
 ## Example Paths
 
-- Bakery repo root: `/srv/bakery`
-- PoundCake repo root: `/srv/poundcake`
+- Bakery repo root: `/opt/bakery`
+- PoundCake repo root: `/opt/poundcake`
 - Bakery overrides: `/etc/genestack/helm-configs/bakery`
 - PoundCake overrides: `/etc/genestack/helm-configs/poundcake`
 - Shared chart versions file: `/etc/genestack/helm-chart-versions.yaml`
@@ -97,7 +97,7 @@ chart attach the UI `HTTPRoute`.
 Install Bakery from the Bakery repo root:
 
 ```bash
-cd /srv/bakery
+cd /opt/bakery
 BAKERY_NAMESPACE=bakery \
 BAKERY_RELEASE_NAME=bakery \
 ./bin/install-bakery.sh
@@ -168,7 +168,7 @@ bakery:
 Install PoundCake from the PoundCake repo root:
 
 ```bash
-cd /srv/poundcake
+cd /opt/poundcake
 ./install/install-poundcake-helm.sh
 ```
 

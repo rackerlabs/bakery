@@ -78,6 +78,7 @@ bakery:
       gatewayNamespace: envoy-gateway
       listener:
         name: bakery-ui-https
+        tlsSecretName: bakery-ui-gw-tls-secret
       hostnames:
         - bakery-ui.example.net
   rackspaceCore:
@@ -91,8 +92,8 @@ This remote guide assumes split-host UI mode:
 - `https://bakery-ui.example.net` serves the Bakery operator UI
 
 The Bakery chart still deploys the UI workload automatically. It does not create the split UI
-Gateway. Provision the `bakery-ui-gateway` Gateway, listener, and DNS out of band, then let the
-chart attach the UI `HTTPRoute`.
+Gateway, but it does manage the named UI listener on that existing Gateway and attach the UI
+`HTTPRoute`. Provision the `bakery-ui-gateway` Gateway and DNS out of band first.
 
 Install Bakery from the Bakery repo root:
 

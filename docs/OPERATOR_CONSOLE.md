@@ -8,10 +8,10 @@ Bakery ships a React/Vite operator console that is deployed by the main Helm cha
 - same-host mode: keep `bakery.ui.gateway.enabled=false` and expose the UI from `/` on the main
   Bakery hostname
 - split-host mode: set `bakery.ui.publicUrl`, `bakery.ui.apiBaseUrl`, and `bakery.ui.gateway.*`
-  so the UI gets its own hostname and `HTTPRoute`
+  so the UI gets its own hostname, managed listener, and `HTTPRoute`
 
-In split-host mode, the chart creates only the UI `HTTPRoute`. The backing Gateway and listener
-must already exist in the cluster.
+In split-host mode, the chart manages the named UI listener idempotently and creates the UI
+`HTTPRoute`. The backing Gateway itself must already exist in the cluster.
 
 The UI reads deploy-time runtime config from `/runtime/config.js`:
 

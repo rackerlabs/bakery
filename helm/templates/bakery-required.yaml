@@ -92,6 +92,8 @@
 {{- end }}
 {{- end }}
 {{- if .Values.bakery.ui.gateway.enabled }}
+{{- $uiGatewayProtocol := include "bakery.uiGatewayListenerProtocol" . -}}
+{{- $allowInsecureUiHttp := .Values.bakery.ui.gateway.allowInsecureHttp | default false -}}
 {{- if not .Values.bakery.ui.gateway.gatewayName }}
 {{- fail "bakery.ui.gateway.gatewayName is required when bakery.ui.gateway.enabled=true." -}}
 {{- end }}
@@ -106,6 +108,12 @@
 {{- end }}
 {{- if not .Values.bakery.ui.apiBaseUrl }}
 {{- fail "bakery.ui.apiBaseUrl is required when bakery.ui.gateway.enabled=true." -}}
+{{- end }}
+{{- if and (eq $uiGatewayProtocol "HTTPS") (not .Values.bakery.ui.gateway.listener.tlsSecretName) }}
+{{- fail "bakery.ui.gateway.listener.tlsSecretName is required when bakery.ui.gateway.listener.protocol=HTTPS." -}}
+{{- end }}
+{{- if and (eq $uiGatewayProtocol "HTTP") (not $allowInsecureUiHttp) }}
+{{- fail "bakery.ui.gateway.listener.protocol=HTTP is not allowed by default. Use HTTPS for external Bakery UI traffic, or set bakery.ui.gateway.allowInsecureHttp=true only for isolated non-production environments." -}}
 {{- end }}
 {{- end }}
 {{- end }}

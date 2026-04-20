@@ -1,0 +1,63 @@
+suite: bakery-ui-gateway-listener-job
+templates:
+  - templates/bakery-ui-gateway-listener-job.yaml
+tests:
+  - it: renders an idempotent ui gateway listener hook job
+    release:
+      name: bakery
+      namespace: bakery
+    set:
+      bakery.enabled: true
+      bakery.ui.gateway.enabled: true
+      bakery.ui.gateway.gatewayName: bakery-ui-gateway
+      bakery.ui.gateway.gatewayNamespace: envoy-gateway
+      bakery.ui.gateway.listener.name: bakery-ui-https
+      bakery.ui.gateway.listener.tlsSecretName: bakery-ui-gw-tls-secret
+      bakery.ui.gateway.hostnames[0]: bakery-ui.example.net
+      bakery.ui.publicUrl: https://bakery-ui.example.net
+      bakery.ui.apiBaseUrl: https://bakery.example.com
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: kind
+          value: Job
+      - equal:
+          path: metadata.name
+          value: bakery-ui-gateway-listener
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: post-install,post-upgrade
+      - equal:
+          path: metadata.annotations["helm.sh/hook-delete-policy"]
+          value: before-hook-creation
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: bakery
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: 'Gateway: bakery-ui-gateway'
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: 'Namespace: envoy-gateway'
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: 'Listener: bakery-ui-https'
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: 'Hostname: bakery-ui.example.net'
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: 'LISTENER_EXISTS=.*bakery-ui-https'
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: 'CURRENT_HOSTNAME=.*bakery-ui-https'
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: 'LISTENER_INDEX=.*bakery-ui-https'
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: 'kubectl apply -f /tmp/gateway-updated.json'
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: '"name": "bakery-ui-gw-tls-secret"'

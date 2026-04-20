@@ -51,6 +51,23 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "%s-%s-gateway-manager" .Release.Namespace (include "bakery.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{- define "bakery.uiGatewayNamespace" -}}
+{{- default .Release.Namespace .Values.bakery.ui.gateway.gatewayNamespace -}}
+{{- end -}}
+
+{{- define "bakery.uiGatewayListenerHostname" -}}
+{{- $listener := .Values.bakery.ui.gateway.listener | default dict -}}
+{{- if $listener.hostname -}}
+{{- $listener.hostname -}}
+{{- else if gt (len (.Values.bakery.ui.gateway.hostnames | default list)) 0 -}}
+{{- index .Values.bakery.ui.gateway.hostnames 0 -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "bakery.uiGatewayListenerProtocol" -}}
+{{- upper (.Values.bakery.ui.gateway.listener.protocol | default "HTTPS") -}}
+{{- end -}}
+
 {{- define "bakery.dbHost" -}}
 {{- $database := .Values.bakery.database | default dict -}}
 {{- $host := $database.host | default "" -}}

@@ -43,3 +43,67 @@ tests:
       - failedTemplate:
           errorMessage: "bakery.ui.publicUrl is required when bakery.ui.gateway.enabled=true."
         template: templates/bakery-required.yaml
+  - it: fails fast when split ui gateway lacks a tls secret for https
+    set:
+      bakery.enabled: true
+      bakery.database.createServer: true
+      mariadbOperator.enabled: true
+      bakery.ui.gateway.enabled: true
+      bakery.ui.gateway.gatewayName: bakery-ui-gateway
+      bakery.ui.gateway.listener.name: bakery-ui-https
+      bakery.ui.gateway.hostnames[0]: bakery-ui.example.net
+      bakery.ui.publicUrl: https://bakery-ui.example.net
+      bakery.ui.apiBaseUrl: https://bakery.example.com
+    asserts:
+      - failedTemplate:
+          errorMessage: "bakery.ui.gateway.listener.tlsSecretName is required when bakery.ui.gateway.listener.protocol=HTTPS."
+        template: templates/bakery-required.yaml
+  - it: fails fast when split ui gateway uses http without opt-in
+    set:
+      bakery.enabled: true
+      bakery.database.createServer: true
+      mariadbOperator.enabled: true
+      bakery.ui.gateway.enabled: true
+      bakery.ui.gateway.gatewayName: bakery-ui-gateway
+      bakery.ui.gateway.listener.name: bakery-ui-https
+      bakery.ui.gateway.listener.protocol: HTTP
+      bakery.ui.gateway.hostnames[0]: bakery-ui.example.net
+      bakery.ui.publicUrl: https://bakery-ui.example.net
+      bakery.ui.apiBaseUrl: https://bakery.example.com
+    asserts:
+      - failedTemplate:
+          errorMessage: "bakery.ui.gateway.listener.protocol=HTTP is not allowed by default. Use HTTPS for external Bakery UI traffic, or set bakery.ui.gateway.allowInsecureHttp=true only for isolated non-production environments."
+        template: templates/bakery-required.yaml
+  - it: accepts managed split ui gateway values when the listener tls secret is provided
+    set:
+      bakery.enabled: true
+      bakery.database.createServer: true
+      mariadbOperator.enabled: true
+      bakery.ui.gateway.enabled: true
+      bakery.ui.gateway.gatewayName: bakery-ui-gateway
+      bakery.ui.gateway.listener.name: bakery-ui-https
+      bakery.ui.gateway.listener.tlsSecretName: bakery-ui-gw-tls-secret
+      bakery.ui.gateway.hostnames[0]: bakery-ui.example.net
+      bakery.ui.publicUrl: https://bakery-ui.example.net
+      bakery.ui.apiBaseUrl: https://bakery.example.com
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/bakery-required.yaml
+  - it: allows split ui gateway http only when explicitly enabled
+    set:
+      bakery.enabled: true
+      bakery.database.createServer: true
+      mariadbOperator.enabled: true
+      bakery.ui.gateway.enabled: true
+      bakery.ui.gateway.allowInsecureHttp: true
+      bakery.ui.gateway.gatewayName: bakery-ui-gateway
+      bakery.ui.gateway.listener.name: bakery-ui-https
+      bakery.ui.gateway.listener.protocol: HTTP
+      bakery.ui.gateway.hostnames[0]: bakery-ui.example.net
+      bakery.ui.publicUrl: http://bakery-ui.example.net
+      bakery.ui.apiBaseUrl: http://bakery.example.com
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/bakery-required.yaml

@@ -1,4 +1,4 @@
-{{- if and (.Values.bakery.enabled) .Values.bakery.gateway.enabled }}
+{{- if and (.Values.bakery.enabled) (or .Values.bakery.gateway.enabled .Values.bakery.ui.gateway.enabled) }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:

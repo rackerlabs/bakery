@@ -107,6 +107,7 @@ tests:
       bakery.ui.gateway.enabled: true
       bakery.ui.gateway.gatewayName: bakery-ui-gateway
       bakery.ui.gateway.listener.name: bakery-ui-https
+      bakery.ui.gateway.listener.tlsSecretName: bakery-ui-gw-tls-secret
       bakery.ui.gateway.hostnames[0]: bakery-ui.example.net
       bakery.ui.publicUrl: https://bakery-ui.example.net
       bakery.ui.apiBaseUrl: https://bakery.example.com

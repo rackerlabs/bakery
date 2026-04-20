@@ -40,3 +40,21 @@ tests:
           path: subjects[0].namespace
           value: acct4788235
         documentIndex: 1
+  - it: renders gateway manager RBAC when only the ui gateway listener is managed
+    release:
+      name: bakery
+      namespace: acct4788235
+    set:
+      bakery.enabled: true
+      bakery.ui.gateway.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: metadata.name
+          value: acct4788235-bakery-gateway-manager
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: acct4788235-bakery-gateway-manager
+        documentIndex: 1

@@ -176,6 +176,7 @@ bakery:
       gatewayNamespace: envoy-gateway
       listener:
         name: bakery-ui-https
+        tlsSecretName: bakery-ui-gw-tls-secret
       hostnames:
         - bakery-ui.example.net
   rackspaceCore:
@@ -183,8 +184,13 @@ bakery:
     verifySsl: false
 ```
 
-The split UI gateway is attach-only. The chart creates the UI `HTTPRoute`, but the
-`bakery-ui-gateway` Gateway and listener must already exist in the cluster.
+The split UI gateway is Helm-managed against an existing Gateway. The chart patches the named UI
+listener idempotently and creates the UI `HTTPRoute`, but the `bakery-ui-gateway` Gateway itself
+must already exist in the cluster.
+
+When `bakery.ui.gateway.listener.hostname` is unset, the chart uses the first
+`bakery.ui.gateway.hostnames` entry. The UI listener `port`, `protocol`, `allowedNamespaces`, and
+`updateIfExists` settings default to the same values as the main Bakery gateway path.
 
 In split-host mode:
 

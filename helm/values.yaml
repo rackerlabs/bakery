@@ -115,10 +115,17 @@ bakery:
         memory: 128Mi
     gateway:
       enabled: false
+      allowInsecureHttp: false
       gatewayName: ""
       gatewayNamespace: ""
       listener:
         name: ""
+        hostname: ""
+        port: 443
+        protocol: "HTTPS"
+        tlsSecretName: ""
+        allowedNamespaces: "All"
+        updateIfExists: true
       hostnames: []
       annotations: {}
 

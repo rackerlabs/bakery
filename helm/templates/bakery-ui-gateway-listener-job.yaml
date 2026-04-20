@@ -1,0 +1,134 @@
+{{- if and (.Values.bakery.enabled) .Values.bakery.ui.gateway.enabled }}
+{{- $uiGatewayNamespace := include "bakery.uiGatewayNamespace" . -}}
+{{- $uiListenerHostname := include "bakery.uiGatewayListenerHostname" . -}}
+{{- $uiListenerProtocol := include "bakery.uiGatewayListenerProtocol" . -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-gateway-listener" (include "bakery.uiFullname" .) | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "bakery.labels" . | nindent 4 }}
+    app.kubernetes.io/component: bakery-ui-gateway-listener
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      name: {{ printf "%s-gateway-listener" (include "bakery.uiFullname" .) | trunc 63 | trimSuffix "-" }}
+      labels:
+        {{- include "bakery.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: bakery-ui-gateway-listener
+        {{- include "bakery.logGroupLabel" . | nindent 8 }}
+        {{- include "bakery.logRoleWorker" . | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ include "bakery.serviceAccountName" . }}
+      {{- include "bakery.podPlacement" . | nindent 6 }}
+      containers:
+      - name: bakery-ui-gateway-listener
+        image: {{ .Values.images.kubectl | quote }}
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+
+          echo "=========================================="
+          echo "Bakery UI Gateway Listener Configuration"
+          echo "=========================================="
+          echo "Gateway: {{ .Values.bakery.ui.gateway.gatewayName }}"
+          echo "Namespace: {{ $uiGatewayNamespace }}"
+          echo "Listener: {{ .Values.bakery.ui.gateway.listener.name }}"
+          echo "Hostname: {{ $uiListenerHostname }}"
+          echo "=========================================="
+
+          if ! kubectl get gateway {{ .Values.bakery.ui.gateway.gatewayName }} -n {{ $uiGatewayNamespace }} &>/dev/null; then
+            echo "ERROR: Gateway '{{ .Values.bakery.ui.gateway.gatewayName }}' not found in namespace '{{ $uiGatewayNamespace }}'"
+            exit 1
+          fi
+
+          LISTENER_EXISTS=$(kubectl get gateway {{ .Values.bakery.ui.gateway.gatewayName }} -n {{ $uiGatewayNamespace }} -o jsonpath='{.spec.listeners[?(@.name=="{{ .Values.bakery.ui.gateway.listener.name }}")].name}')
+
+          if [ -n "$LISTENER_EXISTS" ]; then
+            CURRENT_HOSTNAME=$(kubectl get gateway {{ .Values.bakery.ui.gateway.gatewayName }} -n {{ $uiGatewayNamespace }} -o jsonpath='{.spec.listeners[?(@.name=="{{ .Values.bakery.ui.gateway.listener.name }}")].hostname}')
+            CURRENT_PORT=$(kubectl get gateway {{ .Values.bakery.ui.gateway.gatewayName }} -n {{ $uiGatewayNamespace }} -o jsonpath='{.spec.listeners[?(@.name=="{{ .Values.bakery.ui.gateway.listener.name }}")].port}')
+            CURRENT_PROTOCOL=$(kubectl get gateway {{ .Values.bakery.ui.gateway.gatewayName }} -n {{ $uiGatewayNamespace }} -o jsonpath='{.spec.listeners[?(@.name=="{{ .Values.bakery.ui.gateway.listener.name }}")].protocol}')
+
+            {{- if .Values.bakery.ui.gateway.listener.updateIfExists }}
+            if [ "$CURRENT_HOSTNAME" != "{{ $uiListenerHostname }}" ] || \
+               [ "$CURRENT_PORT" != "{{ .Values.bakery.ui.gateway.listener.port }}" ] || \
+               [ "$CURRENT_PROTOCOL" != "{{ $uiListenerProtocol }}" ]; then
+              NEEDS_UPDATE=true
+            else
+              NEEDS_UPDATE=false
+            fi
+            {{- else }}
+            NEEDS_UPDATE=false
+            {{- end }}
+          else
+            NEEDS_UPDATE=true
+          fi
+
+          if [ "$NEEDS_UPDATE" = "true" ]; then
+            kubectl get gateway {{ .Values.bakery.ui.gateway.gatewayName }} -n {{ $uiGatewayNamespace }} -o json > /tmp/gateway.json
+            LISTENER_INDEX=$(jq '.spec.listeners | map(.name) | index("{{ .Values.bakery.ui.gateway.listener.name }}")' /tmp/gateway.json)
+
+            if [ "$LISTENER_INDEX" = "null" ]; then
+              jq '.spec.listeners += [
+                {
+                  "name": "{{ .Values.bakery.ui.gateway.listener.name }}",
+                  "hostname": "{{ $uiListenerHostname }}",
+                  "port": {{ .Values.bakery.ui.gateway.listener.port }},
+                  "protocol": "{{ $uiListenerProtocol }}",
+                  {{- if eq $uiListenerProtocol "HTTPS" }}
+                  "tls": {
+                    "mode": "Terminate",
+                    "certificateRefs": [
+                      {
+                        "kind": "Secret",
+                        "name": "{{ .Values.bakery.ui.gateway.listener.tlsSecretName }}"
+                      }
+                    ]
+                  },
+                  {{- end }}
+                  "allowedRoutes": {
+                    "namespaces": {
+                      "from": "{{ .Values.bakery.ui.gateway.listener.allowedNamespaces }}"
+                    }
+                  }
+                }
+              ]' /tmp/gateway.json > /tmp/gateway-updated.json
+            else
+              jq ".spec.listeners[$LISTENER_INDEX] = {
+                \"name\": \"{{ .Values.bakery.ui.gateway.listener.name }}\",
+                \"hostname\": \"{{ $uiListenerHostname }}\",
+                \"port\": {{ .Values.bakery.ui.gateway.listener.port }},
+                \"protocol\": \"{{ $uiListenerProtocol }}\",
+                {{- if eq $uiListenerProtocol "HTTPS" }}
+                \"tls\": {
+                  \"mode\": \"Terminate\",
+                  \"certificateRefs\": [
+                    {
+                      \"kind\": \"Secret\",
+                      \"name\": \"{{ .Values.bakery.ui.gateway.listener.tlsSecretName }}\"
+                    }
+                  ]
+                },
+                {{- end }}
+                \"allowedRoutes\": {
+                  \"namespaces\": {
+                    \"from\": \"{{ .Values.bakery.ui.gateway.listener.allowedNamespaces }}\"
+                  }
+                }
+              }" /tmp/gateway.json > /tmp/gateway-updated.json
+            fi
+
+            kubectl apply -f /tmp/gateway-updated.json
+          fi
+
+          echo "Bakery UI Gateway listener configuration complete"
+{{- end }}

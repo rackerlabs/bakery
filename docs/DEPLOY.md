@@ -6,8 +6,8 @@ Bakery resources.
 ## Canonical Paths
 
 - Bakery repo root installer: [`bin/install-bakery.sh`](../bin/install-bakery.sh)
-- Bakery override directory on Genestack-style hosts: `/srv/config/bakery/`
-- Shared chart version file on Genestack-style hosts: `/srv/config/chart-versions.yaml`
+- Optional Bakery override directory: `/path/to/bakery-overrides/`
+- Optional shared chart version file: `/path/to/chart-versions.yaml`
 - Standalone PoundCake repo: [rackerlabs/poundcake](https://github.com/rackerlabs/poundcake)
 
 Recommended override layout:
@@ -15,8 +15,13 @@ Recommended override layout:
 - `00-pull-secret-overrides.yaml`
 - `10-main-overrides.yaml`
 
-If your environment tracks deployed chart versions in `/srv/config/chart-versions.yaml`,
-add or update a `bakery` entry before rollout.
+`bin/install-bakery.sh` loads every `*.yaml` and `*.yml` file from the configured override
+directory in filename order when you set `BAKERY_OVERRIDES_DIR` or pass
+`--bakery-overrides-dir`. Backup files like `10-main-overrides.yaml.bak-20260408` are ignored
+because they do not end in `.yaml` or `.yml`.
+
+If your environment tracks deployed chart versions in a shared manifest such as
+`/path/to/chart-versions.yaml`, add or update a `bakery` entry before rollout.
 
 ## Prerequisites
 
@@ -24,6 +29,18 @@ add or update a `bakery` entry before rollout.
 - a namespace for the Bakery release
 - one provider secret for the active Bakery mixer
 - a Bakery auth secret that includes a monitor encryption key for PoundCake monitor registration
+
+The secret names should live in your override YAML, not only on the installer command line. For
+example:
+
+- `bakery.auth.existingSecret`
+- `bakery.rackspaceCore.existingSecret`
+- `bakery.servicenow.existingSecret`
+- `bakery.jira.existingSecret`
+- `bakery.github.existingSecret`
+- `bakery.pagerduty.existingSecret`
+- `bakery.teams.existingSecret`
+- `bakery.discord.existingSecret`
 
 Example Rackspace Core secret:
 
@@ -76,9 +93,9 @@ Auth0 and Azure AD flows follow the same shared/ui/cli split already used in Pou
 
 The Bakery chart always deploys these three workloads together:
 
-- `bakery-poundcake-bakery`
-- `bakery-poundcake-bakery-ui`
-- `bakery-poundcake-bakery-worker`
+- `bakery-release`
+- `bakery-release-ui`
+- `bakery-release-worker`
 
 You do not install the UI separately. Pick the exposure mode that fits your environment.
 
@@ -90,7 +107,7 @@ uses relative `/api/v1/*` calls.
 `10-main-overrides.yaml`
 
 ```yaml
-fullnameOverride: bakery-poundcake-bakery
+fullnameOverride: bakery-release
 
 bakery:
   auth:
@@ -128,7 +145,7 @@ separate Bakery hostname.
 `10-main-overrides.yaml`
 
 ```yaml
-fullnameOverride: bakery-poundcake-bakery
+fullnameOverride: bakery-release
 
 bakery:
   auth:
@@ -183,24 +200,38 @@ Put pull secrets in `00-pull-secret-overrides.yaml` when private GHCR pulls are 
 Run the canonical installer from the repository root. Bakery installs from the published OCI chart
 by default.
 
+The simplest path is just:
+
 ```bash
-./bin/install-bakery.sh \
-  --bakery-active-provider rackspace_core \
-  --bakery-auth-secret-name bakery-hmac
+./bin/install-bakery.sh
+```
+
+No override directory is auto-loaded unless you opt in. When you keep environment-specific values
+in a separate directory, point the installer at it:
+
+```bash
+BAKERY_OVERRIDES_DIR=/path/to/bakery-overrides ./bin/install-bakery.sh
 ```
 
 Override the OCI chart version when needed:
 
 ```bash
-BAKERY_CHART_VERSION="0.1.10" ./bin/install-bakery.sh --bakery-auth-secret-name bakery-hmac
+BAKERY_CHART_VERSION="0.1.10" ./bin/install-bakery.sh
 ```
 
 Override the OCI chart reference when needed:
 
 ```bash
-BAKERY_CHART_REF="oci://ghcr.io/rackerlabs/charts/bakery" ./bin/install-bakery.sh \
-  --bakery-auth-secret-name bakery-hmac
+BAKERY_CHART_REF="oci://ghcr.io/rackerlabs/charts/bakery" ./bin/install-bakery.sh
 ```
+
+Or pass the override directory explicitly:
+
+```bash
+./bin/install-bakery.sh --bakery-overrides-dir /path/to/bakery-overrides
+```
+
+If you need one extra ad hoc values file on top of the auto-loaded directory, append it with `-f`.
 
 The older wrapper paths under `install/` and `helm/bin/` are no longer supported.
 
@@ -209,9 +240,9 @@ The older wrapper paths under `install/` and `helm/bin/` are no longer supported
 Wait for rollout:
 
 ```bash
-kubectl -n bakery rollout status deploy/bakery-poundcake-bakery --timeout=300s
-kubectl -n bakery rollout status deploy/bakery-poundcake-bakery-ui --timeout=300s
-kubectl -n bakery rollout status deploy/bakery-poundcake-bakery-worker --timeout=300s
+kubectl -n bakery rollout status deploy/bakery-release --timeout=300s
+kubectl -n bakery rollout status deploy/bakery-release-ui --timeout=300s
+kubectl -n bakery rollout status deploy/bakery-release-worker --timeout=300s
 ```
 
 Confirm release state:
@@ -247,9 +278,9 @@ curl -fsS https://bakery.example.com/api/v1/auth/providers
 If PoundCake is already connected, verify monitor registration and heartbeat activity:
 
 ```bash
-kubectl -n bakery logs deploy/bakery-poundcake-bakery-worker --tail=100
-kubectl -n bakery exec bakery-poundcake-bakery-mariadb-0 -- \
-  mariadb -uroot -p"$(kubectl -n bakery get secret bakery-poundcake-bakery-mariadb-root -o jsonpath='{.data.password}' | base64 -d)" \
+kubectl -n bakery logs deploy/bakery-release-worker --tail=100
+kubectl -n bakery exec bakery-release-mariadb-0 -- \
+  mariadb -uroot -p"$(kubectl -n bakery get secret bakery-release-mariadb-root -o jsonpath='{.data.password}' | base64 -d)" \
   -N -e "USE bakery; SELECT monitor_id, status, last_checkin_at, route_sync_required FROM monitors;"
 ```
 

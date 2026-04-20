@@ -87,28 +87,28 @@ def test_monitor_registration_and_heartbeat_accept_metadata_fields() -> None:
         {
             "monitor_id": "example-namespace/example-release",
             "environment_label": "example-namespace/example-release",
-            "region": "ord",
+            "region": "region-a",
             "cluster_name": "cluster-a",
-            "namespace": "rackspace",
-            "release_name": "poundcake",
-            "tags": ["prod", "rackspace"],
+            "namespace": "example-namespace",
+            "release_name": "example-release",
+            "tags": ["prod", "example"],
         }
     )
     heartbeat = MonitorHeartbeatRequest.model_validate(
         {
             "catalog_hash": "abc123",
             "environment_label": "example-namespace/example-release",
-            "region": "ord",
+            "region": "region-a",
             "cluster_name": "cluster-a",
-            "namespace": "rackspace",
-            "release_name": "poundcake",
-            "tags": ["prod", "rackspace"],
+            "namespace": "example-namespace",
+            "release_name": "example-release",
+            "tags": ["prod", "example"],
             "details": {"instance_id": "pod-1"},
         }
     )
 
     assert registration.environment_label == "example-namespace/example-release"
-    assert registration.tags == ["prod", "rackspace"]
+    assert registration.tags == ["prod", "example"]
     assert heartbeat.cluster_name == "cluster-a"
     assert heartbeat.details["instance_id"] == "pod-1"
 

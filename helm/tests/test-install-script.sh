@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 INSTALLER="${ROOT_DIR}/bin/install-bakery.sh"
+CHART_VERSION="$(awk -F': ' '/^version:/ {gsub(/"/, "", $2); print $2; exit}' "${ROOT_DIR}/helm/Chart.yaml")"
 
 fail() {
   echo "[FAIL] $*" >&2
@@ -74,6 +75,12 @@ secret_exists_for_name() {
     custom-auth)
       printf '%s\n' "${MOCK_CUSTOM_AUTH_SECRET_EXISTS:-0}"
       ;;
+    values-auth)
+      printf '%s\n' "${MOCK_VALUES_AUTH_SECRET_EXISTS:-0}"
+      ;;
+    values-rackspace-core)
+      printf '%s\n' "${MOCK_VALUES_RACKSPACE_SECRET_EXISTS:-0}"
+      ;;
     *)
       printf '%s\n' "${MOCK_GENERIC_SECRET_EXISTS:-0}"
       ;;
@@ -124,6 +131,37 @@ bakery:
     enabled: false
 VALUES_EOF
 
+mkdir -p "${TMP_DIR}/overrides"
+cat > "${TMP_DIR}/overrides/00-pull-secret-overrides.yaml" <<'OVERRIDE_PULL_EOF'
+bakery:
+  image:
+    pullSecrets:
+      - ghcr-pull
+OVERRIDE_PULL_EOF
+
+cat > "${TMP_DIR}/overrides/10-main-overrides.yaml" <<'OVERRIDE_MAIN_EOF'
+fullnameOverride: bakery-poundcake-bakery
+bakery:
+  auth:
+    existingSecret: values-auth
+  config:
+    activeProvider: rackspace_core
+  rackspaceCore:
+    existingSecret: values-rackspace-core
+OVERRIDE_MAIN_EOF
+
+cat > "${TMP_DIR}/overrides/20-ui.yml" <<'OVERRIDE_UI_EOF'
+bakery:
+  ui:
+    publicUrl: https://bakery-ui.example.net
+OVERRIDE_UI_EOF
+
+cat > "${TMP_DIR}/overrides/10-main-overrides.yaml.bak-20260408" <<'OVERRIDE_BAK_EOF'
+bakery:
+  auth:
+    existingSecret: should-not-load
+OVERRIDE_BAK_EOF
+
 run_with_mocks() {
   local out_file="$1"
   shift
@@ -163,8 +201,9 @@ assert_contains "--set bakery.enabled=true" "${TMP_DIR}/helm.log"
 assert_contains "--set-string bakery.config.activeProvider=rackspace_core" "${TMP_DIR}/helm.log"
 assert_contains "--set-string bakery.auth.existingSecret=bakery-secret" "${TMP_DIR}/helm.log"
 assert_contains "--set-string bakery.rackspaceCore.existingSecret=bakery-rackspace-core" "${TMP_DIR}/helm.log"
-assert_contains "--version 0.1.1" "${TMP_DIR}/helm.log"
+assert_contains "--version ${CHART_VERSION}" "${TMP_DIR}/helm.log"
 assert_contains "-f ${TMP_DIR}/values.yaml" "${TMP_DIR}/helm.log"
+assert_not_contains "${TMP_DIR}/overrides/00-pull-secret-overrides.yaml" "${TMP_DIR}/helm.log"
 assert_contains "--set-string bakery.image.tag=0.1.10" "${TMP_DIR}/helm.log"
 assert_contains "--wait" "${TMP_DIR}/helm.log"
 assert_contains "bakery-secret" "${TMP_DIR}/kubectl-created-secrets.log"
@@ -175,6 +214,7 @@ run_with_mocks "${CREATE_PROVIDER_OUT}" \
   env \
   BAKERY_NAMESPACE="env-ns" \
   BAKERY_RELEASE_NAME="bakery" \
+  BAKERY_OVERRIDES_DIR="${TMP_DIR}/missing-overrides" \
   BAKERY_HELM_WAIT="false" \
   MOCK_BAKERY_RACKSPACE_SECRET_EXISTS="0" \
   MOCK_CUSTOM_AUTH_SECRET_EXISTS="0" \
@@ -190,12 +230,35 @@ assert_not_contains "--wait" "${TMP_DIR}/helm.log"
 assert_contains "custom-auth" "${TMP_DIR}/kubectl-created-secrets.log"
 assert_contains "bakery-rackspace-core" "${TMP_DIR}/kubectl-created-secrets.log"
 
+echo "Validating automatic override-directory loading and values-backed secret names..."
+AUTO_VALUES_OUT="${TMP_DIR}/auto-values.out"
+run_with_mocks "${AUTO_VALUES_OUT}" \
+  env \
+  BAKERY_NAMESPACE="env-ns" \
+  BAKERY_RELEASE_NAME="bakery" \
+  BAKERY_OVERRIDES_DIR="${TMP_DIR}/overrides" \
+  MOCK_VALUES_AUTH_SECRET_EXISTS="1" \
+  MOCK_VALUES_RACKSPACE_SECRET_EXISTS="1" \
+  "${INSTALLER}"
+
+assert_contains "--set-string bakery.config.activeProvider=rackspace_core" "${TMP_DIR}/helm.log"
+assert_contains "--set-string bakery.auth.existingSecret=values-auth" "${TMP_DIR}/helm.log"
+assert_contains "--set-string bakery.rackspaceCore.existingSecret=values-rackspace-core" "${TMP_DIR}/helm.log"
+assert_contains "-f ${TMP_DIR}/overrides/00-pull-secret-overrides.yaml" "${TMP_DIR}/helm.log"
+assert_contains "-f ${TMP_DIR}/overrides/10-main-overrides.yaml" "${TMP_DIR}/helm.log"
+assert_contains "-f ${TMP_DIR}/overrides/20-ui.yml" "${TMP_DIR}/helm.log"
+assert_not_contains "10-main-overrides.yaml.bak-20260408" "${TMP_DIR}/helm.log"
+assert_not_contains "should-not-load" "${TMP_DIR}/helm.log"
+assert_contains "Using existing Bakery auth secret values-auth" "${AUTO_VALUES_OUT}"
+assert_not_contains "values-auth" "${TMP_DIR}/kubectl-created-secrets.log"
+
 echo "Validating installer failure when provider credentials are missing..."
 MISSING_PROVIDER_OUT="${TMP_DIR}/missing-provider.out"
 if run_with_mocks "${MISSING_PROVIDER_OUT}" \
   env \
   BAKERY_NAMESPACE="env-ns" \
   BAKERY_RELEASE_NAME="bakery" \
+  BAKERY_OVERRIDES_DIR="${TMP_DIR}/missing-overrides" \
   MOCK_BAKERY_RACKSPACE_SECRET_EXISTS="0" \
   MOCK_BAKERY_AUTH_SECRET_EXISTS="0" \
   "${INSTALLER}" \

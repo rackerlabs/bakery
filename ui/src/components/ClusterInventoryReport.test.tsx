@@ -6,7 +6,7 @@ import { ClusterInventoryReport } from "./ClusterInventoryReport";
 
 const result = {
   collected_at: "2026-04-06T21:30:00Z",
-  namespace: "rackspace",
+  namespace: "example-namespace",
   cluster_summary: {
     node_count: 2,
     ready_node_count: 1,

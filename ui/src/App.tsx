@@ -2284,7 +2284,7 @@ function JobsPage({
               <textarea
                 rows={8}
                 value={advancedJson}
-                placeholder='{"namespace":"rackspace","limit":25}'
+                placeholder='{"namespace":"example-namespace","limit":25}'
                 onChange={(event) => setAdvancedJson(event.target.value)}
               />
               <small className="field-hint">

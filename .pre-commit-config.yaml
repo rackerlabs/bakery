@@ -27,6 +27,12 @@ repos:
       - id: yamllint
         args: ["-c", ".yamllint.yml", "."]
 
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.28.0
+    hooks:
+      - id: gitleaks
+        args: ["--redact"]
+
   - repo: local
     hooks:
       - id: bakery-testall

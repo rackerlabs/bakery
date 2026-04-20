@@ -292,7 +292,7 @@ bakery:
 
   rackspaceCore:
     verifySsl: true
-    defaultQueue: "Support Queue"
+    defaultQueue: ""
     defaultSubcategory: "Monitoring"
     existingSecret: "bakery-rackspace-core"
     secretKeys:

@@ -7,7 +7,7 @@ const clusterInventoryCollector = {
   label: "Cluster inventory",
   description: "Inventory collector",
   default_parameters: { limit: 50 },
-  example_parameters: { namespace: "rackspace", limit: 25 },
+  example_parameters: { namespace: "example-namespace", limit: 25 },
   parameters: [
     {
       name: "namespace",
@@ -16,7 +16,7 @@ const clusterInventoryCollector = {
       description: "Namespace to inspect",
       required: false,
       default_value: "",
-      placeholder: "rackspace",
+      placeholder: "example-namespace",
     },
     {
       name: "limit",
@@ -35,14 +35,14 @@ describe("buildCollectorParameters", () => {
     const params = buildCollectorParameters(
       clusterInventoryCollector,
       {
-        namespace: "rackspace",
+        namespace: "example-namespace",
         limit: "25",
       },
       '{"extra":true,"limit":10}',
     );
 
     expect(params).toEqual({
-      namespace: "rackspace",
+      namespace: "example-namespace",
       limit: 10,
       extra: true,
     });

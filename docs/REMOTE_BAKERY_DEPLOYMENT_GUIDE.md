@@ -11,15 +11,16 @@ Use this sequence:
 5. deploy PoundCake from its standalone repo with `bakery.client.*` remote mode enabled
 6. verify monitor registration, heartbeats, and live ticket paths
 
-## Canonical Operator Paths
+## Example Paths
 
-- Bakery repo root: `/opt/bakery`
-- PoundCake repo root: `/opt/poundcake`
-- Bakery overrides: `/srv/config/bakery/`
-- PoundCake overrides: `/srv/config/poundcake/`
-- Shared chart versions file: `/srv/config/chart-versions.yaml`
+- Bakery repo root: `/srv/bakery`
+- PoundCake repo root: `/srv/poundcake`
+- Bakery overrides: `/srv/config/bakery`
+- PoundCake overrides: `/srv/config/poundcake`
+- Optional shared chart versions file: `/srv/config/chart-versions.yaml`
 
-If your environment tracks desired chart versions in `/srv/config/chart-versions.yaml`,
+If your environment tracks desired chart versions in a shared manifest such as
+`/srv/config/chart-versions.yaml`,
 make sure both `bakery` and `poundcake` entries are updated before rollout.
 
 ## Bakery Side
@@ -47,7 +48,7 @@ kubectl -n bakery create secret generic bakery-rackspace-core \
 Minimum Bakery override shape:
 
 ```yaml
-fullnameOverride: bakery-poundcake-bakery
+fullnameOverride: bakery-release
 
 bakery:
   auth:
@@ -97,21 +98,23 @@ chart attach the UI `HTTPRoute`.
 Install Bakery from the Bakery repo root:
 
 ```bash
-cd /opt/bakery
+cd /srv/bakery
 BAKERY_NAMESPACE=bakery \
 BAKERY_RELEASE_NAME=bakery \
-BAKERY_AUTH_SECRET_NAME=bakery-hmac \
-./bin/install-bakery.sh \
-  -f /srv/config/bakery/00-pull-secret-overrides.yaml \
-  -f /srv/config/bakery/10-main-overrides.yaml
+BAKERY_OVERRIDES_DIR=/srv/config/bakery \
+./bin/install-bakery.sh
 ```
+
+If you keep layered override files, opt in with `BAKERY_OVERRIDES_DIR` or
+`--bakery-overrides-dir`. Files such as `10-main-overrides.yaml.bak-*` are ignored because they do
+not end in `.yaml` or `.yml`.
 
 Verify Bakery before touching PoundCake:
 
 ```bash
-kubectl -n bakery rollout status deploy/bakery-poundcake-bakery --timeout=300s
-kubectl -n bakery rollout status deploy/bakery-poundcake-bakery-ui --timeout=300s
-kubectl -n bakery rollout status deploy/bakery-poundcake-bakery-worker --timeout=300s
+kubectl -n bakery rollout status deploy/bakery-release --timeout=300s
+kubectl -n bakery rollout status deploy/bakery-release-ui --timeout=300s
+kubectl -n bakery rollout status deploy/bakery-release-worker --timeout=300s
 curl -fsS https://bakery-ui.example.net/ | grep -q "Bakery Console"
 curl -fsS https://bakery-ui.example.net/runtime/config.js
 curl -fsS https://bakery.example.com/api/v1/health
@@ -141,7 +144,7 @@ its Bakery-issued per-monitor secret for all normal communication traffic and he
 Create the PoundCake-side bootstrap secret in the PoundCake namespace:
 
 ```bash
-kubectl -n rackspace create secret generic bakery-monitor-bootstrap \
+kubectl -n example-namespace create secret generic bakery-monitor-bootstrap \
   --from-literal=bootstrap-key-id="<bootstrap key_id from Bakery>" \
   --from-literal=bootstrap-key="<bootstrap secret from Bakery>" \
   --from-literal=monitor-encryption-key="$(openssl rand -base64 32)" \
@@ -166,7 +169,7 @@ bakery:
 Install PoundCake from the PoundCake repo root:
 
 ```bash
-cd /opt/poundcake
+cd /srv/poundcake
 ./install/install-poundcake-helm.sh
 ```
 
@@ -175,7 +178,7 @@ cd /opt/poundcake
 Confirm PoundCake is using remote Bakery:
 
 ```bash
-kubectl -n rackspace exec deploy/poundcake-api -- printenv | grep '^POUNDCAKE_BAKERY_'
+kubectl -n example-namespace exec deploy/poundcake-api -- printenv | grep '^POUNDCAKE_BAKERY_'
 curl -fsS https://poundcake.example.com/api/v1/health
 ```
 
@@ -189,8 +192,8 @@ Expected runtime shape:
 Confirm Bakery sees the monitor and current heartbeat:
 
 ```bash
-kubectl -n bakery exec bakery-poundcake-bakery-mariadb-0 -- \
-  mariadb -uroot -p"$(kubectl -n bakery get secret bakery-poundcake-bakery-mariadb-root -o jsonpath='{.data.password}' | base64 -d)" \
+kubectl -n bakery exec bakery-release-mariadb-0 -- \
+  mariadb -uroot -p"$(kubectl -n bakery get secret bakery-release-mariadb-root -o jsonpath='{.data.password}' | base64 -d)" \
   -N -e "USE bakery; SELECT monitor_id, monitor_uuid, status, last_checkin_at, route_sync_required FROM monitors;"
 ```
 
@@ -207,10 +210,10 @@ For the full operator-console feature map, see [OPERATOR_CONSOLE.md](OPERATOR_CO
 Confirm PoundCake persisted its local monitor state:
 
 ```bash
-kubectl -n rackspace exec deploy/poundcake-mariadb -- \
-  mariadb -u"$(kubectl -n rackspace get secret poundcake-secrets -o jsonpath='{.data.DB_USER}' | base64 -d)" \
-  -p"$(kubectl -n rackspace get secret poundcake-secrets -o jsonpath='{.data.DB_PASSWORD}' | base64 -d)" \
-  "$(kubectl -n rackspace get secret poundcake-secrets -o jsonpath='{.data.DB_NAME}' | base64 -d)" \
+kubectl -n example-namespace exec deploy/poundcake-mariadb -- \
+  mariadb -u"$(kubectl -n example-namespace get secret poundcake-secrets -o jsonpath='{.data.DB_USER}' | base64 -d)" \
+  -p"$(kubectl -n example-namespace get secret poundcake-secrets -o jsonpath='{.data.DB_PASSWORD}' | base64 -d)" \
+  "$(kubectl -n example-namespace get secret poundcake-secrets -o jsonpath='{.data.DB_NAME}' | base64 -d)" \
   -N -e "SELECT monitor_id, monitor_uuid, last_heartbeat_status, last_heartbeat_at FROM bakery_monitor_state;"
 ```
 
@@ -231,7 +234,7 @@ Recommended validation sequence:
    The validation recipe and its target PVC name are runtime data. Before testing, confirm the
    recipe’s StackStorm execution overrides still point at the PVC name you intend to use, or create
    the expected PVC target in the cluster.
-2. Send a firing webhook to PoundCake with the `poundcake-admin` `internal-api-key`.
+2. Send a firing webhook to PoundCake with the configured internal API key.
 3. Wait for firing remediation to complete, then send the matching resolved webhook with the same
    fingerprint.
 4. Verify PoundCake order timeline shows successful Bakery create and close operations and capture

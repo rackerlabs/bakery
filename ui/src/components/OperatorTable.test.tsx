@@ -20,8 +20,8 @@ describe("OperatorTable", () => {
   it("updates rendered rows when the backing data changes", async () => {
     const user = userEvent.setup();
     const onSelectRow = vi.fn();
-    const initialRows: Row[] = [{ id: "1", monitor: "example-environment", status: "unreachable" }];
-    const refreshedRows: Row[] = [{ id: "1", monitor: "example-environment", status: "healthy" }];
+    const initialRows: Row[] = [{ id: "1", monitor: "monitor-a", status: "unreachable" }];
+    const refreshedRows: Row[] = [{ id: "1", monitor: "monitor-a", status: "healthy" }];
 
     const { rerender } = render(
       <OperatorTable

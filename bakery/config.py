@@ -259,17 +259,13 @@ class Settings:
         self.discord_webhook_url: Optional[str] = os.getenv("DISCORD_WEBHOOK_URL")
 
         # Rackspace Core
-        self.rackspace_core_url: Optional[str] = os.getenv(
-            "RACKSPACE_CORE_URL", "https://core.example.com"
-        )
+        self.rackspace_core_url: Optional[str] = os.getenv("RACKSPACE_CORE_URL", "")
         self.rackspace_core_username: Optional[str] = os.getenv("RACKSPACE_CORE_USERNAME")
         self.rackspace_core_password: Optional[str] = os.getenv("RACKSPACE_CORE_PASSWORD")
         self.rackspace_core_verify_ssl: bool = env_to_bool(
             os.getenv("RACKSPACE_CORE_VERIFY_SSL"), default=True
         )
-        self.rackspace_core_default_queue: str = os.getenv(
-            "RACKSPACE_CORE_DEFAULT_QUEUE", "Support Queue"
-        )
+        self.rackspace_core_default_queue: str = os.getenv("RACKSPACE_CORE_DEFAULT_QUEUE", "")
         self.rackspace_core_default_subcategory: str = os.getenv(
             "RACKSPACE_CORE_DEFAULT_SUBCATEGORY", "Monitoring"
         )

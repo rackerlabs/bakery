@@ -7,10 +7,11 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 NAMESPACE="${BAKERY_NAMESPACE:-bakery}"
 RELEASE_NAME="${BAKERY_RELEASE_NAME:-bakery}"
 VALUES_FILE="${BAKERY_VALUES_FILE:-}"
+OVERRIDES_DIR="${BAKERY_OVERRIDES_DIR:-}"
 IMAGE_TAG="${BAKERY_IMAGE_TAG:-}"
 HELM_WAIT="${BAKERY_HELM_WAIT:-true}"
 
-ACTIVE_PROVIDER="${BAKERY_ACTIVE_PROVIDER:-rackspace_core}"
+ACTIVE_PROVIDER="${BAKERY_ACTIVE_PROVIDER:-}"
 UPDATE_BAKERY_SECRET="${BAKERY_UPDATE_SECRET:-false}"
 
 BAKERY_AUTH_SECRET_NAME="${BAKERY_AUTH_SECRET_NAME:-}"
@@ -19,34 +20,36 @@ BAKERY_HMAC_ACTIVE_KEY="${BAKERY_HMAC_ACTIVE_KEY:-}"
 BAKERY_HMAC_NEXT_KEY_ID="${BAKERY_HMAC_NEXT_KEY_ID:-}"
 BAKERY_HMAC_NEXT_KEY="${BAKERY_HMAC_NEXT_KEY:-}"
 
-BAKERY_RACKSPACE_SECRET_NAME="${BAKERY_RACKSPACE_SECRET_NAME:-bakery-rackspace-core}"
+BAKERY_RACKSPACE_SECRET_NAME="${BAKERY_RACKSPACE_SECRET_NAME:-}"
 BAKERY_RACKSPACE_URL="${BAKERY_RACKSPACE_URL:-}"
 BAKERY_RACKSPACE_USERNAME="${BAKERY_RACKSPACE_USERNAME:-}"
 BAKERY_RACKSPACE_PASSWORD="${BAKERY_RACKSPACE_PASSWORD:-}"
 
-BAKERY_SERVICENOW_SECRET_NAME="${BAKERY_SERVICENOW_SECRET_NAME:-bakery-servicenow}"
+BAKERY_SERVICENOW_SECRET_NAME="${BAKERY_SERVICENOW_SECRET_NAME:-}"
 BAKERY_SERVICENOW_URL="${BAKERY_SERVICENOW_URL:-}"
 BAKERY_SERVICENOW_USERNAME="${BAKERY_SERVICENOW_USERNAME:-}"
 BAKERY_SERVICENOW_PASSWORD="${BAKERY_SERVICENOW_PASSWORD:-}"
 
-BAKERY_JIRA_SECRET_NAME="${BAKERY_JIRA_SECRET_NAME:-bakery-jira}"
+BAKERY_JIRA_SECRET_NAME="${BAKERY_JIRA_SECRET_NAME:-}"
 BAKERY_JIRA_URL="${BAKERY_JIRA_URL:-}"
 BAKERY_JIRA_USERNAME="${BAKERY_JIRA_USERNAME:-}"
 BAKERY_JIRA_API_TOKEN="${BAKERY_JIRA_API_TOKEN:-}"
 
-BAKERY_GITHUB_SECRET_NAME="${BAKERY_GITHUB_SECRET_NAME:-bakery-github}"
+BAKERY_GITHUB_SECRET_NAME="${BAKERY_GITHUB_SECRET_NAME:-}"
 BAKERY_GITHUB_TOKEN="${BAKERY_GITHUB_TOKEN:-}"
 
-BAKERY_PAGERDUTY_SECRET_NAME="${BAKERY_PAGERDUTY_SECRET_NAME:-bakery-pagerduty}"
+BAKERY_PAGERDUTY_SECRET_NAME="${BAKERY_PAGERDUTY_SECRET_NAME:-}"
 BAKERY_PAGERDUTY_API_KEY="${BAKERY_PAGERDUTY_API_KEY:-}"
 
-BAKERY_TEAMS_SECRET_NAME="${BAKERY_TEAMS_SECRET_NAME:-bakery-teams}"
+BAKERY_TEAMS_SECRET_NAME="${BAKERY_TEAMS_SECRET_NAME:-}"
 BAKERY_TEAMS_WEBHOOK_URL="${BAKERY_TEAMS_WEBHOOK_URL:-}"
 
-BAKERY_DISCORD_SECRET_NAME="${BAKERY_DISCORD_SECRET_NAME:-bakery-discord}"
+BAKERY_DISCORD_SECRET_NAME="${BAKERY_DISCORD_SECRET_NAME:-}"
 BAKERY_DISCORD_WEBHOOK_URL="${BAKERY_DISCORD_WEBHOOK_URL:-}"
 
 FORWARD_ARGS=()
+ARG_VALUES_FILES=()
+VALUES_FILES=()
 
 log_info() {
   echo "[INFO] $*" >&2
@@ -81,6 +84,7 @@ Usage:
 Supported installer flags:
   --bakery-chart-ref <oci-ref>
   --bakery-chart-version <version>
+  --bakery-overrides-dir <path>
   --bakery-active-provider <provider>
   --bakery-auth-secret-name <name>
   --bakery-rackspace-secret-name <name>
@@ -104,6 +108,9 @@ Supported installer flags:
   --bakery-discord-secret-name <name>
   --bakery-discord-webhook-url <url>
   --update-bakery-secret
+
+Set `BAKERY_OVERRIDES_DIR` or pass `--bakery-overrides-dir` to auto-load extra
+values files from a directory. No override directory is loaded by default.
 
 All other arguments are forwarded to helm upgrade --install.
 USAGE
@@ -140,6 +147,22 @@ default_auth_secret_name() {
   printf '%s\n' "${secret_name}"
 }
 
+default_provider_secret_name() {
+  case "$1" in
+    rackspace_core) printf '%s\n' "bakery-rackspace-core" ;;
+    servicenow) printf '%s\n' "bakery-servicenow" ;;
+    jira) printf '%s\n' "bakery-jira" ;;
+    github) printf '%s\n' "bakery-github" ;;
+    pagerduty) printf '%s\n' "bakery-pagerduty" ;;
+    teams) printf '%s\n' "bakery-teams" ;;
+    discord) printf '%s\n' "bakery-discord" ;;
+    *)
+      log_error "Unsupported provider: $1"
+      exit 1
+      ;;
+  esac
+}
+
 ensure_namespace_exists() {
   if ! kubectl get namespace "${NAMESPACE}" >/dev/null 2>&1; then
     log_info "Creating namespace ${NAMESPACE}"
@@ -163,6 +186,196 @@ apply_secret() {
   local secret_name="$1"
   shift
   kubectl -n "${NAMESPACE}" create secret generic "${secret_name}" "$@" --dry-run=client -o yaml | kubectl apply -f -
+}
+
+append_values_file() {
+  local values_file="$1"
+  local existing_file=""
+
+  [[ -n "${values_file}" ]] || return 0
+
+  if ((${#VALUES_FILES[@]} > 0)); then
+    for existing_file in "${VALUES_FILES[@]}"; do
+      if [[ "${existing_file}" == "${values_file}" ]]; then
+        return 0
+      fi
+    done
+  fi
+
+  VALUES_FILES+=("${values_file}")
+}
+
+collect_values_files() {
+  local discovered_file=""
+  local arg_values_file=""
+
+  VALUES_FILES=()
+
+  if [[ -n "${VALUES_FILE}" ]]; then
+    append_values_file "${VALUES_FILE}"
+  fi
+
+  if [[ -d "${OVERRIDES_DIR}" ]]; then
+    while IFS= read -r discovered_file; do
+      append_values_file "${discovered_file}"
+    done < <(find "${OVERRIDES_DIR}" -maxdepth 1 -type f \( -name '*.yaml' -o -name '*.yml' \) | sort)
+  fi
+
+  if ((${#ARG_VALUES_FILES[@]} > 0)); then
+    for arg_values_file in "${ARG_VALUES_FILES[@]}"; do
+      append_values_file "${arg_values_file}"
+    done
+  fi
+}
+
+yaml_value_from_file() {
+  local path="$1"
+  local file="$2"
+
+  awk -v want="${path}" '
+    BEGIN {
+      depth = split(want, parts, ".")
+      found = 0
+      result = ""
+    }
+
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*$/ { next }
+
+    {
+      line = $0
+      indent = 0
+
+      while (substr(line, 1, 1) == " ") {
+        indent++
+        line = substr(line, 2)
+      }
+
+      if (line !~ /^[A-Za-z0-9_-]+:/) {
+        next
+      }
+
+      key = line
+      sub(/:.*/, "", key)
+      value = line
+      sub(/^[^:]+:[[:space:]]*/, "", value)
+      if (line ~ /^[^:]+:[[:space:]]*$/) {
+        value = ""
+      }
+      level = int(indent / 2)
+
+      keys[level] = key
+      for (i = level + 1; i < 32; i++) {
+        delete keys[i]
+      }
+
+      if (level + 1 != depth) {
+        next
+      }
+
+      matched = 1
+      for (i = 1; i <= depth; i++) {
+        if (!(i - 1 in keys) || keys[i - 1] != parts[i]) {
+          matched = 0
+          break
+        }
+      }
+
+      if (!matched) {
+        next
+      }
+
+      sub(/[[:space:]]+#.*$/, "", value)
+      gsub(/^[[:space:]]+/, "", value)
+      gsub(/[[:space:]]+$/, "", value)
+
+      if (value ~ /^".*"$/ || value ~ /^'\''.*'\''$/) {
+        value = substr(value, 2, length(value) - 2)
+      }
+
+      found = 1
+      result = value
+    }
+
+    END {
+      if (found) {
+        print result
+        exit 0
+      }
+      exit 1
+    }
+  ' "${file}"
+}
+
+merged_yaml_value() {
+  local path="$1"
+  local current_value=""
+  local merged_value=""
+  local values_file=""
+  local found="false"
+
+  if ((${#VALUES_FILES[@]} > 0)); then
+    for values_file in "${VALUES_FILES[@]}"; do
+      if current_value="$(yaml_value_from_file "${path}" "${values_file}")"; then
+        merged_value="${current_value}"
+        found="true"
+      fi
+    done
+  fi
+
+  if [[ "${found}" == "true" ]]; then
+    printf '%s\n' "${merged_value}"
+    return 0
+  fi
+
+  return 1
+}
+
+provider_secret_name_var_name() {
+  case "$1" in
+    rackspace_core) printf '%s\n' "BAKERY_RACKSPACE_SECRET_NAME" ;;
+    servicenow) printf '%s\n' "BAKERY_SERVICENOW_SECRET_NAME" ;;
+    jira) printf '%s\n' "BAKERY_JIRA_SECRET_NAME" ;;
+    github) printf '%s\n' "BAKERY_GITHUB_SECRET_NAME" ;;
+    pagerduty) printf '%s\n' "BAKERY_PAGERDUTY_SECRET_NAME" ;;
+    teams) printf '%s\n' "BAKERY_TEAMS_SECRET_NAME" ;;
+    discord) printf '%s\n' "BAKERY_DISCORD_SECRET_NAME" ;;
+    *)
+      log_error "Unsupported provider: $1"
+      exit 1
+      ;;
+  esac
+}
+
+resolve_values_backed_settings() {
+  local resolved_value=""
+  local provider_secret_path=""
+  local provider_secret_var=""
+
+  if [[ -z "${ACTIVE_PROVIDER}" ]]; then
+    if resolved_value="$(merged_yaml_value "bakery.config.activeProvider")"; then
+      ACTIVE_PROVIDER="${resolved_value}"
+    else
+      ACTIVE_PROVIDER="rackspace_core"
+    fi
+  fi
+
+  if [[ -z "${BAKERY_AUTH_SECRET_NAME}" ]]; then
+    if resolved_value="$(merged_yaml_value "bakery.auth.existingSecret")"; then
+      BAKERY_AUTH_SECRET_NAME="${resolved_value}"
+    fi
+  fi
+
+  provider_secret_path="$(provider_values_path "${ACTIVE_PROVIDER}")"
+  provider_secret_var="$(provider_secret_name_var_name "${ACTIVE_PROVIDER}")"
+
+  if [[ -z "${!provider_secret_var}" ]]; then
+    if resolved_value="$(merged_yaml_value "${provider_secret_path}")"; then
+      printf -v "${provider_secret_var}" '%s' "${resolved_value}"
+    else
+      printf -v "${provider_secret_var}" '%s' "$(default_provider_secret_name "${ACTIVE_PROVIDER}")"
+    fi
+  fi
 }
 
 ensure_auth_secret() {
@@ -208,7 +421,7 @@ ensure_provider_secret() {
 
   case "${provider}" in
     rackspace_core)
-      secret_name="${BAKERY_RACKSPACE_SECRET_NAME}"
+      secret_name="${BAKERY_RACKSPACE_SECRET_NAME:-$(default_provider_secret_name "${provider}")}"
       [[ -n "${BAKERY_RACKSPACE_URL}${BAKERY_RACKSPACE_USERNAME}${BAKERY_RACKSPACE_PASSWORD}" ]] && provided="true"
       value_args=(
         --from-literal=rackspace-core-url="${BAKERY_RACKSPACE_URL}"
@@ -217,7 +430,7 @@ ensure_provider_secret() {
       )
       ;;
     servicenow)
-      secret_name="${BAKERY_SERVICENOW_SECRET_NAME}"
+      secret_name="${BAKERY_SERVICENOW_SECRET_NAME:-$(default_provider_secret_name "${provider}")}"
       [[ -n "${BAKERY_SERVICENOW_URL}${BAKERY_SERVICENOW_USERNAME}${BAKERY_SERVICENOW_PASSWORD}" ]] && provided="true"
       value_args=(
         --from-literal=servicenow-url="${BAKERY_SERVICENOW_URL}"
@@ -226,7 +439,7 @@ ensure_provider_secret() {
       )
       ;;
     jira)
-      secret_name="${BAKERY_JIRA_SECRET_NAME}"
+      secret_name="${BAKERY_JIRA_SECRET_NAME:-$(default_provider_secret_name "${provider}")}"
       [[ -n "${BAKERY_JIRA_URL}${BAKERY_JIRA_USERNAME}${BAKERY_JIRA_API_TOKEN}" ]] && provided="true"
       value_args=(
         --from-literal=jira-url="${BAKERY_JIRA_URL}"
@@ -235,22 +448,22 @@ ensure_provider_secret() {
       )
       ;;
     github)
-      secret_name="${BAKERY_GITHUB_SECRET_NAME}"
+      secret_name="${BAKERY_GITHUB_SECRET_NAME:-$(default_provider_secret_name "${provider}")}"
       [[ -n "${BAKERY_GITHUB_TOKEN}" ]] && provided="true"
       value_args=(--from-literal=github-token="${BAKERY_GITHUB_TOKEN}")
       ;;
     pagerduty)
-      secret_name="${BAKERY_PAGERDUTY_SECRET_NAME}"
+      secret_name="${BAKERY_PAGERDUTY_SECRET_NAME:-$(default_provider_secret_name "${provider}")}"
       [[ -n "${BAKERY_PAGERDUTY_API_KEY}" ]] && provided="true"
       value_args=(--from-literal=pagerduty-api-key="${BAKERY_PAGERDUTY_API_KEY}")
       ;;
     teams)
-      secret_name="${BAKERY_TEAMS_SECRET_NAME}"
+      secret_name="${BAKERY_TEAMS_SECRET_NAME:-$(default_provider_secret_name "${provider}")}"
       [[ -n "${BAKERY_TEAMS_WEBHOOK_URL}" ]] && provided="true"
       value_args=(--from-literal=teams-webhook-url="${BAKERY_TEAMS_WEBHOOK_URL}")
       ;;
     discord)
-      secret_name="${BAKERY_DISCORD_SECRET_NAME}"
+      secret_name="${BAKERY_DISCORD_SECRET_NAME:-$(default_provider_secret_name "${provider}")}"
       [[ -n "${BAKERY_DISCORD_WEBHOOK_URL}" ]] && provided="true"
       value_args=(--from-literal=discord-webhook-url="${BAKERY_DISCORD_WEBHOOK_URL}")
       ;;
@@ -302,6 +515,7 @@ parse_args() {
     case "$1" in
       --bakery-chart-ref) CHART_REF="$2"; shift 2 ;;
       --bakery-chart-version) CHART_VERSION="$2"; shift 2 ;;
+      --bakery-overrides-dir) OVERRIDES_DIR="$2"; shift 2 ;;
       --bakery-active-provider) ACTIVE_PROVIDER="$2"; shift 2 ;;
       --bakery-auth-secret-name) BAKERY_AUTH_SECRET_NAME="$2"; shift 2 ;;
       --bakery-rackspace-secret-name) BAKERY_RACKSPACE_SECRET_NAME="$2"; shift 2 ;;
@@ -325,6 +539,7 @@ parse_args() {
       --bakery-discord-secret-name) BAKERY_DISCORD_SECRET_NAME="$2"; shift 2 ;;
       --bakery-discord-webhook-url) BAKERY_DISCORD_WEBHOOK_URL="$2"; shift 2 ;;
       --update-bakery-secret) UPDATE_BAKERY_SECRET="true"; shift ;;
+      -f|--values) ARG_VALUES_FILES+=("$2"); shift 2 ;;
       -h|--help) usage; exit 0 ;;
       *)
         FORWARD_ARGS+=("$1")
@@ -336,6 +551,8 @@ parse_args() {
 
 main() {
   parse_args "$@"
+  collect_values_files
+  resolve_values_backed_settings
   ensure_namespace_exists
   ensure_auth_secret
 
@@ -357,8 +574,11 @@ main() {
   if [[ -n "${CHART_VERSION}" ]]; then
     helm_cmd+=(--version "${CHART_VERSION}")
   fi
-  if [[ -n "${VALUES_FILE}" ]]; then
-    helm_cmd+=(-f "${VALUES_FILE}")
+  if ((${#VALUES_FILES[@]} > 0)); then
+    local values_file=""
+    for values_file in "${VALUES_FILES[@]}"; do
+      helm_cmd+=(-f "${values_file}")
+    done
   fi
   if [[ -n "${IMAGE_TAG}" ]]; then
     helm_cmd+=(--set-string "bakery.image.tag=${IMAGE_TAG}")

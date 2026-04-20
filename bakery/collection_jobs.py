@@ -35,7 +35,7 @@ COLLECTOR_CATALOG: dict[str, dict[str, object]] = {
             "then pair it with a namespace-scoped workload snapshot and report."
         ),
         "default_parameters": {"limit": 50},
-        "example_parameters": {"namespace": "rackspace", "limit": 25},
+        "example_parameters": {"namespace": "example-namespace", "limit": 25},
         "parameters": [
             {
                 "name": "namespace",
@@ -47,7 +47,7 @@ COLLECTOR_CATALOG: dict[str, dict[str, object]] = {
                 ),
                 "required": False,
                 "default_value": "",
-                "placeholder": "rackspace",
+                "placeholder": "example-namespace",
             },
             {
                 "name": "limit",

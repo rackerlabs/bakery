@@ -4,7 +4,7 @@ import { buildClusterInventoryMarkdown, clusterInventoryHighlights } from "./clu
 
 const result = {
   collected_at: "2026-04-06T21:30:00Z",
-  namespace: "rackspace",
+  namespace: "example-namespace",
   cluster_summary: {
     node_count: 2,
     ready_node_count: 2,
@@ -37,8 +37,8 @@ const result = {
     },
   ],
   storage_classes: [{ name: "fast", provisioner: "csi.example", volume_binding_mode: "WaitForFirstConsumer" }],
-  persistent_volumes: [{ name: "pv-1", phase: "Bound", storage_class_name: "fast", capacity: "100Gi", claim_ref: "rackspace/pvc-1" }],
-  persistent_volume_claims: [{ name: "pvc-1", namespace: "rackspace", phase: "Bound", storage_class_name: "fast", requested_storage: "100Gi" }],
+  persistent_volumes: [{ name: "pv-1", phase: "Bound", storage_class_name: "fast", capacity: "100Gi", claim_ref: "example-namespace/pvc-1" }],
+  persistent_volume_claims: [{ name: "pvc-1", namespace: "example-namespace", phase: "Bound", storage_class_name: "fast", requested_storage: "100Gi" }],
   pods: [{ name: "api-1", phase: "Running", node_name: "worker-1", restart_count: 0, pod_ip: "10.0.0.10" }],
   deployments: [{ name: "api", ready_replicas: 2, available_replicas: 2, replicas: 2 }],
   statefulsets: [{ name: "db", ready_replicas: 1, replicas: 1, service_name: "db" }],

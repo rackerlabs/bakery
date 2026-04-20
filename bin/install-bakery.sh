@@ -7,7 +7,12 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 NAMESPACE="${BAKERY_NAMESPACE:-bakery}"
 RELEASE_NAME="${BAKERY_RELEASE_NAME:-bakery}"
 VALUES_FILE="${BAKERY_VALUES_FILE:-}"
-OVERRIDES_DIR="${BAKERY_OVERRIDES_DIR:-}"
+DEFAULT_OVERRIDES_DIR="${BAKERY_DEFAULT_OVERRIDES_DIR:-/srv/config/bakery}"
+if [[ "${BAKERY_OVERRIDES_DIR+set}" == "set" ]]; then
+  OVERRIDES_DIR="${BAKERY_OVERRIDES_DIR}"
+else
+  OVERRIDES_DIR="${DEFAULT_OVERRIDES_DIR}"
+fi
 IMAGE_TAG="${BAKERY_IMAGE_TAG:-}"
 HELM_WAIT="${BAKERY_HELM_WAIT:-true}"
 
@@ -109,8 +114,10 @@ Supported installer flags:
   --bakery-discord-webhook-url <url>
   --update-bakery-secret
 
-Set `BAKERY_OVERRIDES_DIR` or pass `--bakery-overrides-dir` to auto-load extra
-values files from a directory. No override directory is loaded by default.
+The installer auto-loads extra values files from `/srv/config/bakery` when that
+directory exists. Set `BAKERY_OVERRIDES_DIR` or pass `--bakery-overrides-dir`
+to use a different directory. Set `BAKERY_OVERRIDES_DIR` to an empty string to
+disable directory auto-loading.
 
 All other arguments are forwarded to helm upgrade --install.
 USAGE

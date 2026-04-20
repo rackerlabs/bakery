@@ -102,11 +102,11 @@ By default it installs `oci://ghcr.io/rackerlabs/charts/bakery` and uses the rep
 [`helm/Chart.yaml`](helm/Chart.yaml) version unless you override `BAKERY_CHART_REF` /
 `--bakery-chart-ref` or `BAKERY_CHART_VERSION` / `--bakery-chart-version`.
 
-If you keep environment-specific values in a separate directory, set
-`BAKERY_OVERRIDES_DIR=/path/to/bakery-overrides` or pass `--bakery-overrides-dir` and the installer
-will load every `.yaml` and `.yml` file from that directory in filename order. Put auth secret
-names, provider secret names, pull secrets, and UI routing there rather than only on the command
-line.
+The installer automatically loads every `.yaml` and `.yml` file from `/srv/config/bakery` in
+filename order when that directory exists. Use `BAKERY_OVERRIDES_DIR` /
+`--bakery-overrides-dir` to point at a different directory, or set
+`BAKERY_OVERRIDES_DIR=""` to disable directory auto-loading. Put auth secret names, provider
+secret names, pull secrets, and UI routing there rather than only on the command line.
 
 See [docs/DEPLOY.md](docs/DEPLOY.md) for standalone installation and
 [docs/REMOTE_BAKERY_DEPLOYMENT_GUIDE.md](docs/REMOTE_BAKERY_DEPLOYMENT_GUIDE.md) for the remote

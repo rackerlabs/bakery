@@ -183,6 +183,7 @@ echo "Validating standalone Bakery install with an existing provider secret..."
 EXISTING_PROVIDER_OUT="${TMP_DIR}/existing-provider.out"
 run_with_mocks "${EXISTING_PROVIDER_OUT}" \
   env \
+  BAKERY_DEFAULT_OVERRIDES_DIR="${TMP_DIR}/missing-default-overrides" \
   BAKERY_NAMESPACE="env-ns" \
   BAKERY_RELEASE_NAME="bakery" \
   BAKERY_VALUES_FILE="${TMP_DIR}/values.yaml" \
@@ -212,6 +213,7 @@ echo "Validating installer-managed Bakery auth and provider secret creation..."
 CREATE_PROVIDER_OUT="${TMP_DIR}/create-provider.out"
 run_with_mocks "${CREATE_PROVIDER_OUT}" \
   env \
+  BAKERY_DEFAULT_OVERRIDES_DIR="${TMP_DIR}/missing-default-overrides" \
   BAKERY_NAMESPACE="env-ns" \
   BAKERY_RELEASE_NAME="bakery" \
   BAKERY_OVERRIDES_DIR="${TMP_DIR}/missing-overrides" \
@@ -234,9 +236,9 @@ echo "Validating automatic override-directory loading and values-backed secret n
 AUTO_VALUES_OUT="${TMP_DIR}/auto-values.out"
 run_with_mocks "${AUTO_VALUES_OUT}" \
   env \
+  BAKERY_DEFAULT_OVERRIDES_DIR="${TMP_DIR}/overrides" \
   BAKERY_NAMESPACE="env-ns" \
   BAKERY_RELEASE_NAME="bakery" \
-  BAKERY_OVERRIDES_DIR="${TMP_DIR}/overrides" \
   MOCK_VALUES_AUTH_SECRET_EXISTS="1" \
   MOCK_VALUES_RACKSPACE_SECRET_EXISTS="1" \
   "${INSTALLER}"
@@ -256,6 +258,7 @@ echo "Validating installer failure when provider credentials are missing..."
 MISSING_PROVIDER_OUT="${TMP_DIR}/missing-provider.out"
 if run_with_mocks "${MISSING_PROVIDER_OUT}" \
   env \
+  BAKERY_DEFAULT_OVERRIDES_DIR="${TMP_DIR}/missing-default-overrides" \
   BAKERY_NAMESPACE="env-ns" \
   BAKERY_RELEASE_NAME="bakery" \
   BAKERY_OVERRIDES_DIR="${TMP_DIR}/missing-overrides" \

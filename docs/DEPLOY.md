@@ -6,7 +6,7 @@ Bakery resources.
 ## Canonical Paths
 
 - Bakery repo root installer: [`bin/install-bakery.sh`](../bin/install-bakery.sh)
-- Optional Bakery override directory: `/path/to/bakery-overrides/`
+- Default Bakery override directory: `/srv/config/bakery/`
 - Optional shared chart version file: `/path/to/chart-versions.yaml`
 - Standalone PoundCake repo: [rackerlabs/poundcake](https://github.com/rackerlabs/poundcake)
 
@@ -15,10 +15,11 @@ Recommended override layout:
 - `00-pull-secret-overrides.yaml`
 - `10-main-overrides.yaml`
 
-`bin/install-bakery.sh` loads every `*.yaml` and `*.yml` file from the configured override
-directory in filename order when you set `BAKERY_OVERRIDES_DIR` or pass
-`--bakery-overrides-dir`. Backup files like `10-main-overrides.yaml.bak-20260408` are ignored
-because they do not end in `.yaml` or `.yml`.
+`bin/install-bakery.sh` automatically loads every `*.yaml` and `*.yml` file from
+`/srv/config/bakery/` in filename order when that directory exists. Set
+`BAKERY_OVERRIDES_DIR` or pass `--bakery-overrides-dir` to use a different directory, or set
+`BAKERY_OVERRIDES_DIR=""` to disable directory auto-loading. Backup files like
+`10-main-overrides.yaml.bak-20260408` are ignored because they do not end in `.yaml` or `.yml`.
 
 If your environment tracks deployed chart versions in a shared manifest such as
 `/path/to/chart-versions.yaml`, add or update a `bakery` entry before rollout.
@@ -206,8 +207,8 @@ The simplest path is just:
 ./bin/install-bakery.sh
 ```
 
-No override directory is auto-loaded unless you opt in. When you keep environment-specific values
-in a separate directory, point the installer at it:
+If `/srv/config/bakery` exists, the installer loads it automatically. To use a different
+environment-specific values directory, point the installer at it:
 
 ```bash
 BAKERY_OVERRIDES_DIR=/path/to/bakery-overrides ./bin/install-bakery.sh

@@ -101,13 +101,13 @@ Install Bakery from the Bakery repo root:
 cd /srv/bakery
 BAKERY_NAMESPACE=bakery \
 BAKERY_RELEASE_NAME=bakery \
-BAKERY_OVERRIDES_DIR=/srv/config/bakery \
 ./bin/install-bakery.sh
 ```
 
-If you keep layered override files, opt in with `BAKERY_OVERRIDES_DIR` or
-`--bakery-overrides-dir`. Files such as `10-main-overrides.yaml.bak-*` are ignored because they do
-not end in `.yaml` or `.yml`.
+The installer auto-loads `/srv/config/bakery` by default when that directory exists. Use
+`BAKERY_OVERRIDES_DIR` or `--bakery-overrides-dir` if you want a different override directory.
+Files such as `10-main-overrides.yaml.bak-*` are ignored because they do not end in `.yaml`
+or `.yml`.
 
 Verify Bakery before touching PoundCake:
 

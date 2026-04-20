@@ -3,16 +3,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 NAMESPACE="${BAKERY_NAMESPACE:-bakery}"
 RELEASE_NAME="${BAKERY_RELEASE_NAME:-bakery}"
 VALUES_FILE="${BAKERY_VALUES_FILE:-}"
-DEFAULT_OVERRIDES_DIR="${BAKERY_DEFAULT_OVERRIDES_DIR:-/srv/config/bakery}"
+DEFAULT_OVERRIDES_DIR="${BAKERY_DEFAULT_OVERRIDES_DIR:-/etc/genestack/helm-configs/bakery}"
 if [[ "${BAKERY_OVERRIDES_DIR+set}" == "set" ]]; then
   OVERRIDES_DIR="${BAKERY_OVERRIDES_DIR}"
 else
   OVERRIDES_DIR="${DEFAULT_OVERRIDES_DIR}"
 fi
+VERSION_FILE="${BAKERY_VERSION_FILE:-/etc/genestack/helm-chart-versions.yaml}"
 IMAGE_TAG="${BAKERY_IMAGE_TAG:-}"
 HELM_WAIT="${BAKERY_HELM_WAIT:-true}"
 
@@ -64,20 +64,10 @@ log_error() {
   echo "[ERROR] $*" >&2
 }
 
-default_chart_version() {
-  local chart_file="${PROJECT_ROOT}/helm/Chart.yaml"
-
-  if [[ ! -f "${chart_file}" ]]; then
-    return
-  fi
-
-  awk -F': ' '/^version:/ {gsub(/"/, "", $2); print $2; exit}' "${chart_file}"
-}
-
 if [[ "${BAKERY_CHART_VERSION+set}" == "set" ]]; then
   CHART_VERSION="${BAKERY_CHART_VERSION}"
 else
-  CHART_VERSION="$(default_chart_version)"
+  CHART_VERSION=""
 fi
 CHART_REF="${BAKERY_CHART_REF:-oci://ghcr.io/rackerlabs/charts/bakery}"
 
@@ -114,10 +104,15 @@ Supported installer flags:
   --bakery-discord-webhook-url <url>
   --update-bakery-secret
 
-The installer auto-loads extra values files from `/srv/config/bakery` when that
-directory exists. Set `BAKERY_OVERRIDES_DIR` or pass `--bakery-overrides-dir`
-to use a different directory. Set `BAKERY_OVERRIDES_DIR` to an empty string to
-disable directory auto-loading.
+The installer auto-loads extra values files from
+`/etc/genestack/helm-configs/bakery` when that directory exists. Set
+`BAKERY_OVERRIDES_DIR` or pass `--bakery-overrides-dir` to use a different
+directory.
+
+When `BAKERY_CHART_VERSION` / `--bakery-chart-version` is not set, the
+installer reads the `bakery` chart version from
+`/etc/genestack/helm-chart-versions.yaml`. Set `BAKERY_VERSION_FILE` to use a
+different version file.
 
 All other arguments are forwarded to helm upgrade --install.
 USAGE
@@ -134,6 +129,61 @@ normalize_bool() {
       exit 1
       ;;
   esac
+}
+
+get_chart_version_from_file() {
+  local version_file="$1"
+  local chart_name="$2"
+  local resolved_version=""
+
+  resolved_version="$(
+    awk -v chart="${chart_name}" '
+      BEGIN { in_charts = 0 }
+      /^[[:space:]]*charts:[[:space:]]*$/ { in_charts = 1; next }
+      in_charts == 1 {
+        if ($0 ~ /^[^[:space:]]/) { in_charts = 0; next }
+        line = $0
+        sub(/^[[:space:]]+/, "", line)
+        if (line ~ ("^" chart ":[[:space:]]*")) {
+          sub("^" chart ":[[:space:]]*", "", line)
+          gsub(/[[:space:]]*$/, "", line)
+          print line
+          exit
+        }
+      }
+    ' "${version_file}" | head -n1
+  )"
+
+  if [[ -n "${resolved_version}" ]]; then
+    printf '%s\n' "${resolved_version}"
+    return 0
+  fi
+
+  resolved_version="$(
+    grep -E "^[[:space:]]*${chart_name}:[[:space:]]*" "${version_file}" | head -n1 | sed -E "s/^[[:space:]]*${chart_name}:[[:space:]]*//"
+  )"
+  if [[ -n "${resolved_version}" ]]; then
+    printf '%s\n' "${resolved_version}"
+    return 0
+  fi
+
+  return 1
+}
+
+resolve_chart_version() {
+  if [[ -n "${CHART_VERSION}" ]]; then
+    return 0
+  fi
+
+  if [[ ! -f "${VERSION_FILE}" ]]; then
+    log_error "Chart version file not found at ${VERSION_FILE}. Set BAKERY_CHART_VERSION or create ${VERSION_FILE} with a bakery entry."
+    exit 1
+  fi
+
+  if ! CHART_VERSION="$(get_chart_version_from_file "${VERSION_FILE}" "bakery")"; then
+    log_error "Could not resolve the bakery chart version from ${VERSION_FILE}. Set BAKERY_CHART_VERSION or add a bakery entry."
+    exit 1
+  fi
 }
 
 default_auth_secret_name() {
@@ -558,6 +608,7 @@ parse_args() {
 
 main() {
   parse_args "$@"
+  resolve_chart_version
   collect_values_files
   resolve_values_backed_settings
   ensure_namespace_exists

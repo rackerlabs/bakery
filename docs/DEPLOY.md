@@ -6,8 +6,8 @@ Bakery resources.
 ## Canonical Paths
 
 - Bakery repo root installer: [`bin/install-bakery.sh`](../bin/install-bakery.sh)
-- Default Bakery override directory: `/srv/config/bakery/`
-- Optional shared chart version file: `/path/to/chart-versions.yaml`
+- Default Bakery override directory: `/etc/genestack/helm-configs/bakery/`
+- Shared chart version file: `/etc/genestack/helm-chart-versions.yaml`
 - Standalone PoundCake repo: [rackerlabs/poundcake](https://github.com/rackerlabs/poundcake)
 
 Recommended override layout:
@@ -16,13 +16,12 @@ Recommended override layout:
 - `10-main-overrides.yaml`
 
 `bin/install-bakery.sh` automatically loads every `*.yaml` and `*.yml` file from
-`/srv/config/bakery/` in filename order when that directory exists. Set
-`BAKERY_OVERRIDES_DIR` or pass `--bakery-overrides-dir` to use a different directory, or set
-`BAKERY_OVERRIDES_DIR=""` to disable directory auto-loading. Backup files like
-`10-main-overrides.yaml.bak-20260408` are ignored because they do not end in `.yaml` or `.yml`.
+`/etc/genestack/helm-configs/bakery/` in filename order when that directory exists. Set
+`BAKERY_OVERRIDES_DIR` or pass `--bakery-overrides-dir` to use a different directory. Backup
+files like `10-main-overrides.yaml.bak-20260408` are ignored because they do not end in `.yaml`
+or `.yml`.
 
-If your environment tracks deployed chart versions in a shared manifest such as
-`/path/to/chart-versions.yaml`, add or update a `bakery` entry before rollout.
+Before rollout, add or update the `bakery` entry in `/etc/genestack/helm-chart-versions.yaml`.
 
 ## Prerequisites
 
@@ -207,14 +206,15 @@ The simplest path is just:
 ./bin/install-bakery.sh
 ```
 
-If `/srv/config/bakery` exists, the installer loads it automatically. To use a different
-environment-specific values directory, point the installer at it:
+If `/etc/genestack/helm-configs/bakery` exists, the installer loads it automatically. To use a
+different environment-specific values directory, point the installer at it:
 
 ```bash
 BAKERY_OVERRIDES_DIR=/path/to/bakery-overrides ./bin/install-bakery.sh
 ```
 
-Override the OCI chart version when needed:
+The normal release path is updating the `bakery` entry in
+`/etc/genestack/helm-chart-versions.yaml`. To override it explicitly for one run:
 
 ```bash
 BAKERY_CHART_VERSION="0.1.10" ./bin/install-bakery.sh

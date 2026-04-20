@@ -98,15 +98,15 @@ the repo-root OCI installer:
 Run it from the repository root. The older wrapper paths under `install/` and `helm/bin/` have
 been removed.
 
-By default it installs `oci://ghcr.io/rackerlabs/charts/bakery` and uses the repo's
-[`helm/Chart.yaml`](helm/Chart.yaml) version unless you override `BAKERY_CHART_REF` /
-`--bakery-chart-ref` or `BAKERY_CHART_VERSION` / `--bakery-chart-version`.
+By default it installs `oci://ghcr.io/rackerlabs/charts/bakery`, reads the desired chart version
+from `/etc/genestack/helm-chart-versions.yaml`, and auto-loads every `.yaml` and `.yml` file from
+`/etc/genestack/helm-configs/bakery` in filename order when that directory exists.
 
-The installer automatically loads every `.yaml` and `.yml` file from `/srv/config/bakery` in
-filename order when that directory exists. Use `BAKERY_OVERRIDES_DIR` /
-`--bakery-overrides-dir` to point at a different directory, or set
-`BAKERY_OVERRIDES_DIR=""` to disable directory auto-loading. Put auth secret names, provider
-secret names, pull secrets, and UI routing there rather than only on the command line.
+Use `BAKERY_CHART_REF` / `--bakery-chart-ref` or `BAKERY_CHART_VERSION` /
+`--bakery-chart-version` to override chart source/version. Use `BAKERY_OVERRIDES_DIR` /
+`--bakery-overrides-dir` to point at a different override directory, or `BAKERY_VERSION_FILE` if
+your chart versions file lives elsewhere. Put auth secret names, provider secret names, pull
+secrets, and UI routing in those override files rather than only on the command line.
 
 See [docs/DEPLOY.md](docs/DEPLOY.md) for standalone installation and
 [docs/REMOTE_BAKERY_DEPLOYMENT_GUIDE.md](docs/REMOTE_BAKERY_DEPLOYMENT_GUIDE.md) for the remote

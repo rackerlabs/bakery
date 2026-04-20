@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 INSTALLER="${ROOT_DIR}/bin/install-bakery.sh"
-CHART_VERSION="$(awk -F': ' '/^version:/ {gsub(/"/, "", $2); print $2; exit}' "${ROOT_DIR}/helm/Chart.yaml")"
+CHART_VERSION="9.9.9"
 
 fail() {
   echo "[FAIL] $*" >&2
@@ -40,6 +40,8 @@ assert_not_contains() {
 echo "Checking standalone Bakery installer entrypoint..."
 [[ -x "${INSTALLER}" ]] || fail "missing ${INSTALLER}"
 assert_contains 'CHART_REF="${BAKERY_CHART_REF:-oci://ghcr.io/rackerlabs/charts/bakery}"' "${INSTALLER}"
+assert_contains 'VERSION_FILE="${BAKERY_VERSION_FILE:-/etc/genestack/helm-chart-versions.yaml}"' "${INSTALLER}"
+assert_contains 'DEFAULT_OVERRIDES_DIR="${BAKERY_DEFAULT_OVERRIDES_DIR:-/etc/genestack/helm-configs/bakery}"' "${INSTALLER}"
 assert_not_contains "install-poundcake" "${INSTALLER}"
 
 TMP_DIR="$(mktemp -d)"
@@ -131,6 +133,12 @@ bakery:
     enabled: false
 VALUES_EOF
 
+cat > "${TMP_DIR}/helm-chart-versions.yaml" <<EOF
+---
+charts:
+  bakery: ${CHART_VERSION}
+EOF
+
 mkdir -p "${TMP_DIR}/overrides"
 cat > "${TMP_DIR}/overrides/00-pull-secret-overrides.yaml" <<'OVERRIDE_PULL_EOF'
 bakery:
@@ -183,6 +191,7 @@ echo "Validating standalone Bakery install with an existing provider secret..."
 EXISTING_PROVIDER_OUT="${TMP_DIR}/existing-provider.out"
 run_with_mocks "${EXISTING_PROVIDER_OUT}" \
   env \
+  BAKERY_VERSION_FILE="${TMP_DIR}/helm-chart-versions.yaml" \
   BAKERY_DEFAULT_OVERRIDES_DIR="${TMP_DIR}/missing-default-overrides" \
   BAKERY_NAMESPACE="env-ns" \
   BAKERY_RELEASE_NAME="bakery" \
@@ -213,6 +222,7 @@ echo "Validating installer-managed Bakery auth and provider secret creation..."
 CREATE_PROVIDER_OUT="${TMP_DIR}/create-provider.out"
 run_with_mocks "${CREATE_PROVIDER_OUT}" \
   env \
+  BAKERY_VERSION_FILE="${TMP_DIR}/helm-chart-versions.yaml" \
   BAKERY_DEFAULT_OVERRIDES_DIR="${TMP_DIR}/missing-default-overrides" \
   BAKERY_NAMESPACE="env-ns" \
   BAKERY_RELEASE_NAME="bakery" \
@@ -236,6 +246,7 @@ echo "Validating automatic override-directory loading and values-backed secret n
 AUTO_VALUES_OUT="${TMP_DIR}/auto-values.out"
 run_with_mocks "${AUTO_VALUES_OUT}" \
   env \
+  BAKERY_VERSION_FILE="${TMP_DIR}/helm-chart-versions.yaml" \
   BAKERY_DEFAULT_OVERRIDES_DIR="${TMP_DIR}/overrides" \
   BAKERY_NAMESPACE="env-ns" \
   BAKERY_RELEASE_NAME="bakery" \
@@ -258,6 +269,7 @@ echo "Validating installer failure when provider credentials are missing..."
 MISSING_PROVIDER_OUT="${TMP_DIR}/missing-provider.out"
 if run_with_mocks "${MISSING_PROVIDER_OUT}" \
   env \
+  BAKERY_VERSION_FILE="${TMP_DIR}/helm-chart-versions.yaml" \
   BAKERY_DEFAULT_OVERRIDES_DIR="${TMP_DIR}/missing-default-overrides" \
   BAKERY_NAMESPACE="env-ns" \
   BAKERY_RELEASE_NAME="bakery" \
@@ -269,5 +281,19 @@ if run_with_mocks "${MISSING_PROVIDER_OUT}" \
   fail "expected missing provider credentials to fail"
 fi
 assert_contains "Active provider rackspace_core requires credentials or an existing secret." "${MISSING_PROVIDER_OUT}"
+
+echo "Validating installer failure when no chart version can be resolved..."
+MISSING_VERSION_OUT="${TMP_DIR}/missing-version.out"
+if run_with_mocks "${MISSING_VERSION_OUT}" \
+  env \
+  BAKERY_VERSION_FILE="${TMP_DIR}/missing-helm-chart-versions.yaml" \
+  BAKERY_DEFAULT_OVERRIDES_DIR="${TMP_DIR}/missing-default-overrides" \
+  BAKERY_NAMESPACE="env-ns" \
+  BAKERY_RELEASE_NAME="bakery" \
+  "${INSTALLER}" \
+  --bakery-active-provider rackspace_core; then
+  fail "expected missing chart version file to fail"
+fi
+assert_contains "Chart version file not found at ${TMP_DIR}/missing-helm-chart-versions.yaml" "${MISSING_VERSION_OUT}"
 
 echo "[PASS] Bakery install script regression checks passed"

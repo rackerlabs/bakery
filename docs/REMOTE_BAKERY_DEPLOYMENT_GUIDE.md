@@ -15,13 +15,12 @@ Use this sequence:
 
 - Bakery repo root: `/srv/bakery`
 - PoundCake repo root: `/srv/poundcake`
-- Bakery overrides: `/srv/config/bakery`
-- PoundCake overrides: `/srv/config/poundcake`
-- Optional shared chart versions file: `/srv/config/chart-versions.yaml`
+- Bakery overrides: `/etc/genestack/helm-configs/bakery`
+- PoundCake overrides: `/etc/genestack/helm-configs/poundcake`
+- Shared chart versions file: `/etc/genestack/helm-chart-versions.yaml`
 
-If your environment tracks desired chart versions in a shared manifest such as
-`/srv/config/chart-versions.yaml`,
-make sure both `bakery` and `poundcake` entries are updated before rollout.
+Before rollout, make sure both `bakery` and `poundcake` entries are updated in
+`/etc/genestack/helm-chart-versions.yaml`.
 
 ## Bakery Side
 
@@ -104,10 +103,10 @@ BAKERY_RELEASE_NAME=bakery \
 ./bin/install-bakery.sh
 ```
 
-The installer auto-loads `/srv/config/bakery` by default when that directory exists. Use
-`BAKERY_OVERRIDES_DIR` or `--bakery-overrides-dir` if you want a different override directory.
-Files such as `10-main-overrides.yaml.bak-*` are ignored because they do not end in `.yaml`
-or `.yml`.
+The installer auto-loads `/etc/genestack/helm-configs/bakery` by default when that directory
+exists. Use `BAKERY_OVERRIDES_DIR` or `--bakery-overrides-dir` if you want a different override
+directory. Files such as `10-main-overrides.yaml.bak-*` are ignored because they do not end in
+`.yaml` or `.yml`.
 
 Verify Bakery before touching PoundCake:
 
@@ -152,7 +151,7 @@ kubectl -n example-namespace create secret generic bakery-monitor-bootstrap \
 ```
 
 Point PoundCake at remote Bakery in
-`/srv/config/poundcake/10-main-overrides.yaml`:
+`/etc/genestack/helm-configs/poundcake/10-main-overrides.yaml`:
 
 ```yaml
 bakery:

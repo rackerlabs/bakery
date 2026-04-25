@@ -62,6 +62,20 @@ def _truncate(text: str, limit: int) -> str:
     return text[: limit - 3].rstrip() + "..."
 
 
+def _dedupe_preserve(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    unique: list[str] = []
+    for value in values:
+        if not value:
+            continue
+        key = value.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(value)
+    return unique
+
+
 def _redact_sensitive_text(text: str) -> str:
     if not text:
         return ""
@@ -95,6 +109,29 @@ def _sanitize_multiline_text(value: Any, limit: int) -> str:
 def _sanitize_line(value: Any, limit: int) -> str:
     sanitized = _collapse_line(_redact_sensitive_text(_text(value)))
     return _truncate(sanitized, limit)
+
+
+def _compose_field_value(*values: Any, limit: int) -> str:
+    parts = _dedupe_preserve([_sanitize_line(value, limit) for value in values])
+    return _truncate(" ".join(parts).strip(), limit)
+
+
+def _append_field(
+    fields: list[tuple[str, str]],
+    label: str,
+    value: Any,
+    *,
+    limit: int,
+) -> None:
+    rendered = _sanitize_line(value, limit)
+    if not rendered:
+        return
+    if any(
+        existing_label.casefold() == label.casefold() and existing.casefold() == rendered.casefold()
+        for existing_label, existing in fields
+    ):
+        return
+    fields.append((label, rendered))
 
 
 def _pluralize(count: int, singular: str, plural: str | None = None) -> str:
@@ -479,49 +516,83 @@ def _build_remediation_model(
     }
 
 
+def _field_sections(model: dict[str, Any]) -> list[tuple[str, list[tuple[str, str]]]]:
+    return [
+        ("Current State", model["current_state"]),
+        ("Problem", model["problem"]),
+        ("Affected Scope", model["affected_scope"]),
+        ("Operator Guidance", model["operator_guidance"]),
+    ]
+
+
 def _section_model(canonical: dict[str, Any], action: str, *, compact: bool) -> dict[str, Any]:
     text = canonical.get("text") if isinstance(canonical.get("text"), dict) else {}
     alert = canonical.get("alert") if isinstance(canonical.get("alert"), dict) else {}
     annotations = alert.get("annotations") if isinstance(alert.get("annotations"), dict) else {}
+    labels = alert.get("labels") if isinstance(alert.get("labels"), dict) else {}
     order = canonical.get("order") if isinstance(canonical.get("order"), dict) else {}
     event = canonical.get("event") if isinstance(canonical.get("event"), dict) else {}
 
     headline = _sanitize_line(_text(text.get("headline")) or _title_from_canonical(canonical), 255)
-    overview_lines: list[str] = []
-    for line in (
-        _sanitize_line(text.get("summary"), 500),
-        _sanitize_line(text.get("detail"), 500),
-        _sanitize_line(annotations.get("summary"), 500),
-        _sanitize_line(annotations.get("description"), 500),
-        _sanitize_line(annotations.get("customer_impact"), 500),
-        _sanitize_line(annotations.get("suggested_action"), 500),
-    ):
-        if line and line not in overview_lines:
-            overview_lines.append(line)
+    current_state: list[tuple[str, str]] = []
+    _append_field(current_state, "Severity", alert.get("severity"), limit=64)
+    _append_field(current_state, "Status", alert.get("status"), limit=64)
+    _append_field(current_state, "Started", alert.get("starts_at"), limit=64)
+    _append_field(current_state, "Ended", alert.get("ends_at"), limit=64)
+
+    problem: list[tuple[str, str]] = []
+    alert_summary = _sanitize_line(annotations.get("summary"), 500)
+    impact = _sanitize_line(annotations.get("description"), 500)
+    _append_field(problem, "Alert Summary", alert_summary, limit=500)
+    _append_field(problem, "Impact", impact, limit=500)
+
+    automation_context = _compose_field_value(text.get("summary"), text.get("detail"), limit=500)
+    resolution = _compose_field_value(text.get("resolution"), limit=500)
     if action == "close":
-        resolution = _sanitize_line(text.get("resolution"), 500)
         if resolution:
-            overview_lines.insert(0, resolution)
+            _append_field(problem, "Resolution", resolution, limit=500)
+        elif automation_context:
+            _append_field(problem, "Resolution", automation_context, limit=500)
+    elif automation_context:
+        _append_field(problem, "Automation Context", automation_context, limit=500)
+
+    affected_scope: list[tuple[str, str]] = []
+    _append_field(affected_scope, "Cluster", labels.get("cluster"), limit=255)
+    _append_field(affected_scope, "Namespace", labels.get("namespace"), limit=255)
+    _append_field(affected_scope, "Job", labels.get("job"), limit=255)
+    _append_field(affected_scope, "Service", labels.get("service"), limit=255)
+    _append_field(
+        affected_scope,
+        "Instance",
+        alert.get("instance") or labels.get("instance"),
+        limit=255,
+    )
+
+    operator_guidance: list[tuple[str, str]] = []
+    _append_field(
+        operator_guidance, "Suggested Action", annotations.get("suggested_action"), limit=500
+    )
+    _append_field(
+        operator_guidance, "Customer Impact", annotations.get("customer_impact"), limit=500
+    )
 
     links = _known_links(canonical)
-    metadata = [
-        ("Alert", _sanitize_line(alert.get("group_name"), 255)),
-        ("Severity", _sanitize_line(alert.get("severity"), 64)),
-        ("Status", _sanitize_line(alert.get("status"), 64)),
-        ("Instance", _sanitize_line(alert.get("instance"), 255)),
-        ("Fingerprint", _sanitize_line(alert.get("fingerprint"), 255)),
-        ("Started", _sanitize_line(alert.get("starts_at"), 64)),
-        ("Ended", _sanitize_line(alert.get("ends_at"), 64)),
-        ("Order", _sanitize_line(order.get("id"), 64)),
-        ("Request", _sanitize_line(order.get("req_id"), 128)),
-    ]
-    metadata = [(label, value) for label, value in metadata if value]
+    identifiers: list[tuple[str, str]] = []
+    _append_field(identifiers, "Alert Rule", labels.get("alertname"), limit=255)
+    _append_field(identifiers, "Alert Group", alert.get("group_name"), limit=255)
+    _append_field(identifiers, "Fingerprint", alert.get("fingerprint"), limit=255)
+    _append_field(identifiers, "Order", order.get("id"), limit=64)
+    _append_field(identifiers, "Request", order.get("req_id"), limit=128)
+
     return {
         "headline": headline,
         "title": _sanitize_line(_title_from_canonical(canonical), 255),
-        "overview": overview_lines,
+        "current_state": current_state,
+        "problem": problem,
+        "affected_scope": affected_scope,
+        "operator_guidance": operator_guidance,
         "links": links,
-        "metadata": metadata,
+        "identifiers": identifiers,
         "severity": _text(alert.get("severity") or "unknown"),
         "alert_status": _text(alert.get("status")),
         "event_name": _text(event.get("name")),
@@ -539,13 +610,39 @@ def _bbcode_code_text(text: str) -> str:
     return text.replace("[code]", "[ code]").replace("[/code]", "[/ code]")
 
 
+def _plain_field_line(label: str, value: str) -> str:
+    return f"{label}: {value}"
+
+
+def _markdown_field_line(label: str, value: str) -> str:
+    return f"- **{label}:** {_auto_link_markdown(value)}"
+
+
+def _bbcode_field_line(label: str, value: str) -> str:
+    return f"[b]{label}:[/b] {_auto_link_bbcode(value)}"
+
+
+def _plain_link_line(item: dict[str, str]) -> str:
+    return f"{item['label']}: {item['url']}"
+
+
+def _markdown_link_line(item: dict[str, str]) -> str:
+    return f"- **{item['label']}:** [{item['label']}]({item['url']})"
+
+
+def _bbcode_link_line(item: dict[str, str]) -> str:
+    return f"[b]{item['label']}:[/b] [url={item['url']}]{item['label']}[/url]"
+
+
 def _render_plain_sections(model: dict[str, Any]) -> str:
     remediation = model["remediation"]
     parts = [model["headline"]]
-    if model["overview"]:
+    for heading, fields in _field_sections(model):
+        if not fields:
+            continue
         parts.append("")
-        parts.append("Overview")
-        parts.extend(model["overview"])
+        parts.append(heading)
+        parts.extend(_plain_field_line(label, value) for label, value in fields)
     if remediation["summary"] or remediation["latest"] or remediation["steps"]:
         parts.append("")
         parts.append("Remediation")
@@ -566,24 +663,26 @@ def _render_plain_sections(model: dict[str, Any]) -> str:
     if model["links"]:
         parts.append("")
         parts.append("Links")
-        parts.extend(f"{item['label']}: {item['url']}" for item in model["links"])
-    if model["metadata"]:
+        parts.extend(_plain_link_line(item) for item in model["links"])
+    if model["identifiers"]:
         parts.append("")
-        parts.append("Metadata")
-        parts.extend(f"{label}: {value}" for label, value in model["metadata"])
+        parts.append("Identifiers")
+        parts.extend(_plain_field_line(label, value) for label, value in model["identifiers"])
     return "\n".join(part for part in parts if part is not None).strip()
 
 
 def _render_markdown_sections(model: dict[str, Any]) -> str:
     remediation = model["remediation"]
     parts = [f"## {model['headline']}"]
-    if model["overview"]:
+    for heading, fields in _field_sections(model):
+        if not fields:
+            continue
         parts.append("")
-        parts.append("**Overview**")
-        parts.extend(_auto_link_markdown(line) for line in model["overview"])
+        parts.append(f"### {heading}")
+        parts.extend(_markdown_field_line(label, value) for label, value in fields)
     if remediation["summary"] or remediation["latest"] or remediation["steps"]:
         parts.append("")
-        parts.append("**Remediation**")
+        parts.append("### Remediation")
         if remediation["summary"]:
             parts.append(remediation["summary"])
         if remediation["latest"]:
@@ -596,26 +695,28 @@ def _render_markdown_sections(model: dict[str, Any]) -> str:
     ):
         if body:
             parts.append("")
-            parts.append(f"**{heading}**")
+            parts.append(f"### {heading}")
             parts.append(f"```text\n{_markdown_code_text(body)}\n```")
     if model["links"]:
         parts.append("")
-        parts.append("**Links**")
-        parts.extend(f"- [{item['label']}]({item['url']})" for item in model["links"])
-    if model["metadata"]:
+        parts.append("### Links")
+        parts.extend(_markdown_link_line(item) for item in model["links"])
+    if model["identifiers"]:
         parts.append("")
-        parts.append("**Metadata**")
-        parts.extend(f"- **{label}**: {value}" for label, value in model["metadata"])
+        parts.append("### Identifiers")
+        parts.extend(_markdown_field_line(label, value) for label, value in model["identifiers"])
     return "\n".join(parts).strip()
 
 
 def _render_bbcode_sections(model: dict[str, Any]) -> str:
     remediation = model["remediation"]
     parts = [f"[b]{_auto_link_bbcode(model['headline'])}[/b]"]
-    if model["overview"]:
+    for heading, fields in _field_sections(model):
+        if not fields:
+            continue
         parts.append("")
-        parts.append("[b]Overview[/b]")
-        parts.extend(_auto_link_bbcode(line) for line in model["overview"])
+        parts.append(f"[b]{heading}[/b]")
+        parts.extend(_bbcode_field_line(label, value) for label, value in fields)
     if remediation["summary"] or remediation["latest"] or remediation["steps"]:
         parts.append("")
         parts.append("[b]Remediation[/b]")
@@ -636,13 +737,11 @@ def _render_bbcode_sections(model: dict[str, Any]) -> str:
     if model["links"]:
         parts.append("")
         parts.append("[b]Links[/b]")
-        parts.extend(
-            f"{item['label']}: [url={item['url']}]{item['url']}[/url]" for item in model["links"]
-        )
-    if model["metadata"]:
+        parts.extend(_bbcode_link_line(item) for item in model["links"])
+    if model["identifiers"]:
         parts.append("")
-        parts.append("[b]Metadata[/b]")
-        parts.extend(f"{label}: {_auto_link_bbcode(value)}" for label, value in model["metadata"])
+        parts.append("[b]Identifiers[/b]")
+        parts.extend(_bbcode_field_line(label, value) for label, value in model["identifiers"])
     return "\n".join(parts).strip()
 
 
@@ -666,8 +765,41 @@ def _adf_paragraph(text: str) -> dict[str, Any]:
     return {"type": "paragraph", "content": _adf_text_nodes(text)}
 
 
+def _adf_labeled_paragraph(label: str, value: str) -> dict[str, Any]:
+    return {
+        "type": "paragraph",
+        "content": [
+            {"type": "text", "text": f"{label}: ", "marks": [{"type": "strong"}]},
+            *_adf_text_nodes(value),
+        ],
+    }
+
+
 def _adf_code_block(text: str) -> dict[str, Any]:
     return {"type": "codeBlock", "attrs": {}, "content": [{"type": "text", "text": text}]}
+
+
+def _adf_link_list_item(item: dict[str, str]) -> dict[str, Any]:
+    return {
+        "type": "listItem",
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"{item['label']}: ",
+                        "marks": [{"type": "strong"}],
+                    },
+                    {
+                        "type": "text",
+                        "text": item["label"],
+                        "marks": [{"type": "link", "attrs": {"href": item["url"]}}],
+                    },
+                ],
+            }
+        ],
+    }
 
 
 def _render_adf_sections(model: dict[str, Any]) -> dict[str, Any]:
@@ -675,11 +807,13 @@ def _render_adf_sections(model: dict[str, Any]) -> dict[str, Any]:
     content: list[dict[str, Any]] = [
         {"type": "heading", "attrs": {"level": 2}, "content": _adf_text_nodes(model["headline"])}
     ]
-    if model["overview"]:
+    for heading, fields in _field_sections(model):
+        if not fields:
+            continue
         content.append(
-            {"type": "heading", "attrs": {"level": 3}, "content": _adf_text_nodes("Overview")}
+            {"type": "heading", "attrs": {"level": 3}, "content": _adf_text_nodes(heading)}
         )
-        content.extend(_adf_paragraph(line) for line in model["overview"])
+        content.extend(_adf_labeled_paragraph(label, value) for label, value in fields)
     if remediation["summary"] or remediation["latest"] or remediation["steps"]:
         content.append(
             {"type": "heading", "attrs": {"level": 3}, "content": _adf_text_nodes("Remediation")}
@@ -718,39 +852,15 @@ def _render_adf_sections(model: dict[str, Any]) -> dict[str, Any]:
         content.append(
             {
                 "type": "bulletList",
-                "content": [
-                    {
-                        "type": "listItem",
-                        "content": [
-                            {
-                                "type": "paragraph",
-                                "content": [
-                                    {"type": "text", "text": f"{item['label']}: "},
-                                    {
-                                        "type": "text",
-                                        "text": item["url"],
-                                        "marks": [{"type": "link", "attrs": {"href": item["url"]}}],
-                                    },
-                                ],
-                            }
-                        ],
-                    }
-                    for item in model["links"]
-                ],
+                "content": [_adf_link_list_item(item) for item in model["links"]],
             }
         )
-    if model["metadata"]:
+    if model["identifiers"]:
         content.append(
-            {"type": "heading", "attrs": {"level": 3}, "content": _adf_text_nodes("Metadata")}
+            {"type": "heading", "attrs": {"level": 3}, "content": _adf_text_nodes("Identifiers")}
         )
-        content.append(
-            {
-                "type": "bulletList",
-                "content": [
-                    {"type": "listItem", "content": [_adf_paragraph(f"{label}: {value}")]}
-                    for label, value in model["metadata"]
-                ],
-            }
+        content.extend(
+            _adf_labeled_paragraph(label, value) for label, value in model["identifiers"]
         )
     return {"type": "doc", "version": 1, "content": content}
 
@@ -758,15 +868,25 @@ def _render_adf_sections(model: dict[str, Any]) -> dict[str, Any]:
 def _render_discord_message(model: dict[str, Any]) -> dict[str, Any]:
     remediation = model["remediation"]
     content = _truncate(model["headline"], 1800)
-    description_lines = model["overview"][:]
-    if model["links"]:
-        description_lines.append("")
-        description_lines.extend(f"{item['label']}: {item['url']}" for item in model["links"])
+    description_lines = [f"**{label}:** {value}" for label, value in model["problem"]]
     description = _truncate("\n".join(description_lines).strip(), 3500)
-    fields = [
-        {"name": label, "value": _truncate(value, 1000), "inline": True}
-        for label, value in model["metadata"][:6]
-    ]
+    fields: list[dict[str, Any]] = []
+    for heading, entries, inline in (
+        ("Current State", model["current_state"], True),
+        ("Affected Scope", model["affected_scope"], True),
+        ("Operator Guidance", model["operator_guidance"], False),
+    ):
+        if entries:
+            fields.append(
+                {
+                    "name": heading,
+                    "value": _truncate(
+                        "\n".join(f"**{label}:** {value}" for label, value in entries),
+                        1000,
+                    ),
+                    "inline": inline,
+                }
+            )
     remediation_lines: list[str] = []
     if remediation["summary"]:
         remediation_lines.append(remediation["summary"])
@@ -797,6 +917,28 @@ def _render_discord_message(model: dict[str, Any]) -> dict[str, Any]:
             {
                 "name": excerpt_label,
                 "value": _truncate(excerpt_body, 1000),
+                "inline": False,
+            }
+        )
+    if model["links"]:
+        fields.append(
+            {
+                "name": "Links",
+                "value": _truncate(
+                    "\n".join(_plain_link_line(item) for item in model["links"]),
+                    1000,
+                ),
+                "inline": False,
+            }
+        )
+    if model["identifiers"]:
+        fields.append(
+            {
+                "name": "Identifiers",
+                "value": _truncate(
+                    "\n".join(f"**{label}:** {value}" for label, value in model["identifiers"]),
+                    1000,
+                ),
                 "inline": False,
             }
         )

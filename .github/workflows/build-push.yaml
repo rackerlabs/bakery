@@ -43,7 +43,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN || secrets.CR_PAT }}
+          password: ${{ secrets.CR_PAT || github.token }}
 
       - name: Extract metadata for Docker
         id: meta
@@ -95,22 +95,40 @@ jobs:
           cache-to: type=gha,mode=max,scope=bakery-ui
           platforms: linux/amd64
 
-      - name: Make UI Docker image public
+      - name: Verify UI Docker image is public
         if: github.event_name != 'pull_request'
+        env:
+          GH_API_TOKEN: ${{ secrets.CR_PAT || github.token }}
         run: |
-          curl -X PATCH \
+          visibility="$(
+            curl --fail --silent --show-error \
             -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Authorization: Bearer ${GH_API_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/orgs/${{ env.PACKAGE_OWNER }}/packages/container/${{ env.REPO_NAME }}-ui \
-            -d '{"visibility":"public"}' || echo "Package may already be public or API call failed (non-fatal)"
+            "https://api.github.com/orgs/${{ env.PACKAGE_OWNER }}/packages/container/${{ env.REPO_NAME }}-ui" \
+            | python3 -c 'import json, sys; print(json.load(sys.stdin)["visibility"])'
+          )"
+          if [ "${visibility}" != "public" ]; then
+            echo "Package ${{ env.REPO_NAME }}-ui is ${visibility}, not public." >&2
+            echo "Update it in GitHub at https://github.com/orgs/${{ env.PACKAGE_OWNER }}/packages/container/package/${{ env.REPO_NAME }}-ui/settings" >&2
+            exit 1
+          fi
 
-      - name: Make Docker image public
+      - name: Verify Docker image is public
         if: github.event_name != 'pull_request'
+        env:
+          GH_API_TOKEN: ${{ secrets.CR_PAT || github.token }}
         run: |
-          curl -X PATCH \
+          visibility="$(
+            curl --fail --silent --show-error \
             -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Authorization: Bearer ${GH_API_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/orgs/${{ env.PACKAGE_OWNER }}/packages/container/${{ env.REPO_NAME }} \
-            -d '{"visibility":"public"}' || echo "Package may already be public or API call failed (non-fatal)"
+            "https://api.github.com/orgs/${{ env.PACKAGE_OWNER }}/packages/container/${{ env.REPO_NAME }}" \
+            | python3 -c 'import json, sys; print(json.load(sys.stdin)["visibility"])'
+          )"
+          if [ "${visibility}" != "public" ]; then
+            echo "Package ${{ env.REPO_NAME }} is ${visibility}, not public." >&2
+            echo "Update it in GitHub at https://github.com/orgs/${{ env.PACKAGE_OWNER }}/packages/container/package/${{ env.REPO_NAME }}/settings" >&2
+            exit 1
+          fi

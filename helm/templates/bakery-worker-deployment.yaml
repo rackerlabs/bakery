@@ -231,6 +231,10 @@ spec:
                   key: {{ .Values.bakery.rackspaceCore.secretKeys.password }}
                   optional: true
             {{- end }}
+            - name: RACKSPACE_CORE_DEFAULT_QUEUE
+              value: {{ .Values.bakery.rackspaceCore.defaultQueue | quote }}
+            - name: RACKSPACE_CORE_DEFAULT_SUBCATEGORY
+              value: {{ .Values.bakery.rackspaceCore.defaultSubcategory | quote }}
             - name: RACKSPACE_CORE_VERIFY_SSL
               value: {{ .Values.bakery.rackspaceCore.verifySsl | quote }}
           resources:

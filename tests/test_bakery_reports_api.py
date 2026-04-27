@@ -480,13 +480,9 @@ def test_admin_monitor_delete_removes_registry_rows_and_detaches_tickets(
         .count()
         == 0
     )
+    assert db.query(MonitorEvent).filter(MonitorEvent.monitor_uuid == "monitor-uuid-1").count() == 0
     assert (
-        db.query(MonitorEvent).filter(MonitorEvent.monitor_uuid == "monitor-uuid-1").count()
-        == 0
-    )
-    assert (
-        db.query(CollectionJob).filter(CollectionJob.monitor_uuid == "monitor-uuid-1").count()
-        == 0
+        db.query(CollectionJob).filter(CollectionJob.monitor_uuid == "monitor-uuid-1").count() == 0
     )
     assert (
         db.query(MonitorBootstrapCredential)

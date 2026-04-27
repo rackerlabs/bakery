@@ -44,7 +44,7 @@ const settings: SettingsResponse = {
   auth_enabled: true,
   rbac_enabled: true,
   auth_providers: [],
-  version: "0.1.18",
+  version: "0.1.19",
 };
 
 const monitor: MonitorRow = {

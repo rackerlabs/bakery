@@ -55,6 +55,12 @@ def _canonical_payload() -> dict:
                     },
                     "generator_url": "https://prometheus.example/graph?g0.expr=disk",
                 },
+                "device": {
+                    "name": "472292-storage01",
+                    "hostname": "472292-storage01",
+                    "number": "472292",
+                    "source_label": "k8s_node_name",
+                },
                 "links": [
                     {"label": "Source", "url": "https://prometheus.example/graph?g0.expr=disk"},
                 ],
@@ -114,6 +120,7 @@ def test_build_provider_payload_rackspace_core_close_uses_rendered_remediation_c
     assert "Closing communication after successful remediation." in rendered["close_notes"]
     assert "Before remediation excerpt" in rendered["close_notes"]
     assert "After remediation excerpt" in rendered["close_notes"]
+    assert rendered["device_context"]["name"] == "472292-storage01"
     assert rendered["close_notes"] != "legacy close note should not win"
 
 

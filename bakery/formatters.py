@@ -32,6 +32,31 @@ FULL_STEP_OUTCOME_LIMIT = 180
 COMPACT_STEP_OUTCOME_LIMIT = 90
 FULL_EXCERPT_LIMIT = 900
 COMPACT_EXCERPT_LIMIT = 260
+DEVICE_NAME_FIELDS = (
+    "affected_device",
+    "device_name",
+    "device",
+    "affected_node",
+    "node",
+    "k8s_node_name",
+    "host_name",
+    "node_hostname",
+    "hostname",
+    "host",
+    "service_instance_id",
+    "instance",
+)
+DEVICE_NUMBER_FIELDS = (
+    "device_number",
+    "device_id",
+    "computer_number",
+    "computer_id",
+    "core_device_number",
+    "core_device_id",
+    "rackspace_device_number",
+    "rackspace_device_id",
+    "server_number",
+)
 
 
 def _text(value: Any) -> str:
@@ -172,6 +197,31 @@ def _dedupe_links(links: list[dict[str, str]]) -> list[dict[str, str]]:
     return unique
 
 
+def _device_from_labels(labels: dict[str, Any]) -> dict[str, str]:
+    name = ""
+    source_label = ""
+    for key in DEVICE_NAME_FIELDS:
+        value = _text(labels.get(key))
+        if value:
+            name = value
+            source_label = key
+            break
+    number = ""
+    for key in DEVICE_NUMBER_FIELDS:
+        value = _text(labels.get(key))
+        if value:
+            number = value
+            break
+    if not name and not number:
+        return {}
+    return {
+        "name": name,
+        "hostname": name,
+        "number": number,
+        "source_label": source_label,
+    }
+
+
 def _split_text_with_urls(text: str) -> list[tuple[str, bool]]:
     if not text:
         return []
@@ -207,6 +257,8 @@ def _build_fallback_canonical(action: str, payload: dict[str, Any]) -> dict[str,
         url = _text(annotations.get(key) or context.get(key) or payload.get(key))
         if url:
             links.append({"label": label, "url": url})
+
+    device = _device_from_labels(labels)
 
     return {
         "schema_version": 1,
@@ -244,13 +296,14 @@ def _build_fallback_canonical(action: str, payload: dict[str, Any]) -> dict[str,
             "severity": _text(payload.get("severity") or labels.get("severity") or "unknown"),
             "status": _text(context.get("alert_status")),
             "fingerprint": _text(context.get("fingerprint")),
-            "instance": _text(labels.get("instance")),
+            "instance": _text(device.get("name") or labels.get("instance")),
             "starts_at": _text(context.get("starts_at")),
             "ends_at": _text(context.get("ends_at")),
             "labels": labels,
             "annotations": annotations,
             "generator_url": generator_url,
         },
+        "device": device,
         "links": _dedupe_links(links),
         "text": {
             "headline": _text(
@@ -282,6 +335,16 @@ def canonical_from_payload(action: str, payload: dict[str, Any]) -> dict[str, An
     if isinstance(canonical, dict):
         return canonical
     return _build_fallback_canonical(action, payload)
+
+
+def device_context_from_payload(action: str, payload: dict[str, Any]) -> dict[str, Any]:
+    canonical = canonical_from_payload(action, payload)
+    device = canonical.get("device") if isinstance(canonical.get("device"), dict) else {}
+    if device:
+        return {key: value for key, value in device.items() if value not in (None, "", [])}
+    alert = canonical.get("alert") if isinstance(canonical.get("alert"), dict) else {}
+    labels = alert.get("labels") if isinstance(alert.get("labels"), dict) else {}
+    return _device_from_labels(labels)
 
 
 def provider_config_from_context(provider: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -532,6 +595,7 @@ def _section_model(canonical: dict[str, Any], action: str, *, compact: bool) -> 
     labels = alert.get("labels") if isinstance(alert.get("labels"), dict) else {}
     order = canonical.get("order") if isinstance(canonical.get("order"), dict) else {}
     event = canonical.get("event") if isinstance(canonical.get("event"), dict) else {}
+    device = device_context_from_payload(action, {"context": {"_canonical": canonical}})
 
     headline = _sanitize_line(_text(text.get("headline")) or _title_from_canonical(canonical), 255)
     current_state: list[tuple[str, str]] = []
@@ -557,6 +621,8 @@ def _section_model(canonical: dict[str, Any], action: str, *, compact: bool) -> 
         _append_field(problem, "Automation Context", automation_context, limit=500)
 
     affected_scope: list[tuple[str, str]] = []
+    _append_field(affected_scope, "Affected Device", device.get("name"), limit=255)
+    _append_field(affected_scope, "Core Device Number", device.get("number"), limit=64)
     _append_field(affected_scope, "Cluster", labels.get("cluster"), limit=255)
     _append_field(affected_scope, "Namespace", labels.get("namespace"), limit=255)
     _append_field(affected_scope, "Job", labels.get("job"), limit=255)

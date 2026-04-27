@@ -17,7 +17,11 @@ from bakery.api.tickets import _enqueue_ticket_action_request, create_ticket_req
 from bakery.collection_jobs import expire_collection_job_leases
 from bakery.config import settings
 from bakery.database import SessionLocal
-from bakery.formatters import provider_config_from_context, render_provider_content
+from bakery.formatters import (
+    device_context_from_payload,
+    provider_config_from_context,
+    render_provider_content,
+)
 from bakery.metrics import (
     BAKERY_DEAD_LETTER_TOTAL,
     BAKERY_OPERATION_LATENCY_SECONDS,
@@ -77,6 +81,10 @@ def _build_provider_payload(
     for key in ("source", "visibility"):
         if context.get(key) is not None and key not in provider_payload:
             provider_payload[key] = context.get(key)
+    if provider == "rackspace_core":
+        device_context = device_context_from_payload(action, payload)
+        if device_context:
+            provider_payload.setdefault("device_context", device_context)
 
     if action == "create":
         provider_payload.update(render_provider_content(provider, action, payload))

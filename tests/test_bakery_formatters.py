@@ -40,6 +40,7 @@ def _target_down_payload() -> dict:
                         "job": "default/rabbitmq-cluster-operator",
                         "namespace": "rabbitmq-system",
                         "severity": "warning",
+                        "affected_node": "472292-storage01",
                     },
                     "annotations": {
                         "summary": "One or more targets are unreachable.",
@@ -199,6 +200,7 @@ def test_render_provider_content_rackspace_core_uses_operator_first_sections() -
         "No matching workflow is configured for this alert."
     ) in rendered["body"]
     assert "[b]Namespace:[/b] rabbitmq-system" in rendered["body"]
+    assert "[b]Affected Device:[/b] 472292-storage01" in rendered["body"]
     assert "[b]Job:[/b] default/rabbitmq-cluster-operator" in rendered["body"]
     assert "[b]Service:[/b]" not in rendered["body"]
     assert (

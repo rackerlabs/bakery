@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Rackspace Core mixer for ticket management via CTKAPI."""
 
+import re
 from typing import Dict, Any, Optional, List
 import httpx
 
@@ -88,6 +89,180 @@ class RackspaceCoreMixer(BaseMixer):
             seen.add(key)
             deduped.append({"id": row_id, "name": row_name})
         return deduped
+
+    def _extract_account_devices(self, result: Any) -> List[Dict[str, Any]]:
+        devices: List[Dict[str, Any]] = []
+        for row in self._extract_result_rows(result):
+            computers = row.get("computers")
+            if not isinstance(computers, dict):
+                continue
+            subattributes = computers.get("subattributes")
+            if not isinstance(subattributes, dict):
+                continue
+            for number, attrs in subattributes.items():
+                if not isinstance(attrs, dict):
+                    continue
+                device_number = self._coerce_int(number)
+                if device_number is None:
+                    continue
+                devices.append(
+                    {
+                        "number": device_number,
+                        "name": self._normalize_text(attrs.get("name")),
+                        "nickname": self._normalize_text(attrs.get("nickname")),
+                        "status": self._normalize_text(attrs.get("status.name")),
+                    }
+                )
+        return devices
+
+    async def _load_account_devices(self, account_number: Any) -> List[Dict[str, Any]]:
+        if not self._normalize_text(account_number):
+            return []
+        query_set = [
+            {
+                "class": "Account.Account",
+                "load_arg": str(account_number),
+                "attributes": [
+                    "name",
+                    {
+                        "id": "number",
+                        "attribute": "computers",
+                        "subattributes": ["name", "nickname", "status.name"],
+                    },
+                ],
+            }
+        ]
+        result = await self._execute_query(query_set)
+        return self._extract_account_devices(result)
+
+    def _device_number_from_context(self, device_context: Dict[str, Any]) -> int | None:
+        for key in (
+            "number",
+            "device_number",
+            "device_id",
+            "computer_number",
+            "computer_id",
+            "core_device_number",
+            "core_device_id",
+        ):
+            device_number = self._coerce_int(device_context.get(key))
+            if device_number is not None:
+                return device_number
+        name = self._normalize_text(
+            device_context.get("name")
+            or device_context.get("hostname")
+            or device_context.get("affected_node")
+        )
+        match = re.match(r"^(\d+)(?:[-_.].*)?$", name)
+        if match:
+            return int(match.group(1))
+        return None
+
+    @staticmethod
+    def _device_names(device: Dict[str, Any]) -> set[str]:
+        return {
+            str(value).strip().casefold()
+            for value in (device.get("name"), device.get("nickname"))
+            if str(value or "").strip()
+        }
+
+    async def _resolve_account_device(
+        self,
+        *,
+        account_number: Any,
+        device_context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        if not device_context:
+            return {"attempted": False, "matched": False, "reason": "no_device_context"}
+
+        devices = await self._load_account_devices(account_number)
+        if not devices:
+            return {"attempted": True, "matched": False, "reason": "no_account_devices"}
+
+        desired_number = self._device_number_from_context(device_context)
+        if desired_number is not None:
+            matches = [device for device in devices if device.get("number") == desired_number]
+            if len(matches) == 1:
+                return {"attempted": True, "matched": True, "device": matches[0]}
+            return {
+                "attempted": True,
+                "matched": False,
+                "reason": "device_number_not_found",
+                "device_number": desired_number,
+            }
+
+        desired_name = self._normalize_text(
+            device_context.get("name")
+            or device_context.get("hostname")
+            or device_context.get("affected_node")
+        )
+        desired_key = desired_name.casefold()
+        if not desired_key:
+            return {"attempted": True, "matched": False, "reason": "no_device_name"}
+
+        matches = [device for device in devices if desired_key in self._device_names(device)]
+        if len(matches) == 1:
+            return {"attempted": True, "matched": True, "device": matches[0]}
+        if len(matches) > 1:
+            return {
+                "attempted": True,
+                "matched": False,
+                "reason": "ambiguous_device_match",
+                "candidates": [
+                    {"number": device.get("number"), "name": device.get("name")}
+                    for device in matches[:5]
+                ],
+            }
+        return {
+            "attempted": True,
+            "matched": False,
+            "reason": "device_not_found",
+            "device_name": desired_name,
+        }
+
+    async def _attach_device_if_available(
+        self,
+        *,
+        ticket_number: Any,
+        account_number: Any,
+        data: Dict[str, Any],
+    ) -> Dict[str, Any] | None:
+        device_context = data.get("device_context")
+        if not isinstance(device_context, dict) or not device_context:
+            return None
+        resolution = await self._resolve_account_device(
+            account_number=account_number,
+            device_context=device_context,
+        )
+        if not resolution.get("matched"):
+            return resolution
+        device = resolution.get("device") if isinstance(resolution.get("device"), dict) else {}
+        device_number = self._coerce_int(device.get("number"))
+        if device_number is None:
+            return {**resolution, "matched": False, "reason": "matched_device_missing_number"}
+        query_set = [
+            {
+                "class": "Ticket.Ticket",
+                "load_arg": str(ticket_number),
+                "method": "addComputer",
+                "args": [device_number],
+                "keyword_args": {"check_for_dr": True},
+            }
+        ]
+        try:
+            result = await self._execute_query(query_set)
+        except Exception as exc:  # noqa: BLE001
+            return {
+                **resolution,
+                "attached": False,
+                "error": str(exc),
+            }
+        return {
+            **resolution,
+            "attached": True,
+            "ticket_id": str(ticket_number),
+            "data": result,
+        }
 
     def _pick_named_value_id(self, rows: List[Dict[str, Any]], desired: Any) -> int | None:
         desired_id = self._coerce_int(desired)
@@ -499,10 +674,22 @@ class RackspaceCoreMixer(BaseMixer):
                         or ""
                     )
 
+        device_attachment = None
+        if ticket_number:
+            device_attachment = await self._attach_device_if_available(
+                ticket_number=ticket_number,
+                account_number=account_number,
+                data=data,
+            )
+
+        response_data: Any = result
+        if device_attachment is not None:
+            response_data = {"operation": result, "device_attachment": device_attachment}
+
         return {
             "success": True,
             "ticket_id": ticket_number or "",
-            "data": result,
+            "data": response_data,
         }
 
     async def _update_ticket(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -538,11 +725,19 @@ class RackspaceCoreMixer(BaseMixer):
         ]
 
         result = await self._execute_query(query_set)
+        device_attachment = await self._attach_device_if_available(
+            ticket_number=ticket_number,
+            account_number=data.get("account_number"),
+            data=data,
+        )
+        response_data: Any = result
+        if device_attachment is not None:
+            response_data = {"operation": result, "device_attachment": device_attachment}
 
         return {
             "success": True,
             "ticket_id": str(ticket_number),
-            "data": result,
+            "data": response_data,
         }
 
     async def _close_ticket(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -664,11 +859,19 @@ class RackspaceCoreMixer(BaseMixer):
         ]
 
         result = await self._execute_query(query_set)
+        device_attachment = await self._attach_device_if_available(
+            ticket_number=ticket_number,
+            account_number=data.get("account_number"),
+            data=data,
+        )
+        response_data: Any = result
+        if device_attachment is not None:
+            response_data = {"operation": result, "device_attachment": device_attachment}
 
         return {
             "success": True,
             "ticket_id": str(ticket_number),
-            "data": result,
+            "data": response_data,
         }
 
     async def _search_tickets(self, data: Dict[str, Any]) -> Dict[str, Any]:

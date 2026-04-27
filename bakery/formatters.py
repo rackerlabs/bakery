@@ -57,12 +57,67 @@ DEVICE_NUMBER_FIELDS = (
     "rackspace_device_id",
     "server_number",
 )
+NAMESPACED_RESOURCE_FIELDS = (
+    "horizontalpodautoscaler",
+    "hpa",
+    "deployment",
+    "statefulset",
+    "daemonset",
+    "replicaset",
+    "workload",
+    "pod",
+    "persistentvolumeclaim",
+    "service",
+    "job_name",
+    "cronjob",
+)
+WORKLOAD_FIELDS = (
+    "workload",
+    "deployment",
+    "statefulset",
+    "daemonset",
+    "replicaset",
+    "job_name",
+    "cronjob",
+)
+NODE_FIELDS = (
+    "affected_node",
+    "k8s_node_name",
+    "node_hostname",
+    "node",
+    "host_name",
+    "hostname",
+)
 
 
 def _text(value: Any) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _first_text(mapping: dict[str, Any], keys: tuple[str, ...]) -> str:
+    for key in keys:
+        value = _text(mapping.get(key))
+        if value:
+            return value
+    return ""
+
+
+def _scoped_resource(namespace: str, resource: str) -> str:
+    if not resource:
+        return ""
+    if not namespace or "/" in resource:
+        return resource
+    return f"{namespace}/{resource}"
+
+
+def _resource_from_labels(labels: dict[str, Any]) -> str:
+    namespace = _first_text(labels, ("namespace", "kubernetes_namespace"))
+    resource = _first_text(labels, NAMESPACED_RESOURCE_FIELDS)
+    if resource:
+        return _scoped_resource(namespace, resource)
+    return _first_text(labels, NODE_FIELDS + ("instance",))
 
 
 def _collapse_line(value: Any) -> str:
@@ -413,6 +468,7 @@ def _known_links(canonical: dict[str, Any]) -> list[dict[str, str]]:
 def _title_from_canonical(canonical: dict[str, Any]) -> str:
     text = canonical.get("text") if isinstance(canonical.get("text"), dict) else {}
     alert = canonical.get("alert") if isinstance(canonical.get("alert"), dict) else {}
+    labels = alert.get("labels") if isinstance(alert.get("labels"), dict) else {}
     headline = _text(text.get("headline"))
     summary = _text(
         alert.get("annotations", {}).get("summary")
@@ -420,9 +476,9 @@ def _title_from_canonical(canonical: dict[str, Any]) -> str:
         else ""
     )
     base = summary or _text(alert.get("group_name")) or headline or "PoundCake communication"
-    instance = _text(alert.get("instance"))
-    if instance:
-        base = f"{base} ({instance})"
+    resource = _resource_from_labels(labels) or _text(alert.get("instance"))
+    if resource and resource.lower() not in base.lower():
+        base = f"{base} ({resource})"
     if headline and headline.lower() not in base.lower():
         base = f"{headline}: {base}"
     return _truncate(base, 255)
@@ -623,10 +679,38 @@ def _section_model(canonical: dict[str, Any], action: str, *, compact: bool) -> 
     affected_scope: list[tuple[str, str]] = []
     _append_field(affected_scope, "Affected Device", device.get("name"), limit=255)
     _append_field(affected_scope, "Core Device Number", device.get("number"), limit=64)
+    _append_field(affected_scope, "Resource", _resource_from_labels(labels), limit=255)
     _append_field(affected_scope, "Cluster", labels.get("cluster"), limit=255)
     _append_field(affected_scope, "Namespace", labels.get("namespace"), limit=255)
+    _append_field(
+        affected_scope,
+        "Horizontal Pod Autoscaler",
+        _first_text(labels, ("horizontalpodautoscaler", "hpa")),
+        limit=255,
+    )
+    _append_field(affected_scope, "Workload", _first_text(labels, WORKLOAD_FIELDS), limit=255)
+    _append_field(
+        affected_scope,
+        "Pod",
+        _first_text(labels, ("pod", "pod_name", "kubernetes_pod_name")),
+        limit=255,
+    )
+    _append_field(
+        affected_scope,
+        "Container",
+        _first_text(labels, ("container", "container_name")),
+        limit=255,
+    )
+    _append_field(affected_scope, "Node", _first_text(labels, NODE_FIELDS), limit=255)
+    _append_field(
+        affected_scope,
+        "Persistent Volume Claim",
+        _first_text(labels, ("persistentvolumeclaim", "pvc", "persistent_volume_claim")),
+        limit=255,
+    )
     _append_field(affected_scope, "Job", labels.get("job"), limit=255)
     _append_field(affected_scope, "Service", labels.get("service"), limit=255)
+    _append_field(affected_scope, "Endpoint", labels.get("endpoint"), limit=255)
     _append_field(
         affected_scope,
         "Instance",

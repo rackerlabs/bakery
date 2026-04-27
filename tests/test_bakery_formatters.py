@@ -98,6 +98,86 @@ def _target_down_payload() -> dict:
     }
 
 
+def _hpa_maxed_payload() -> dict:
+    return {
+        "context": {
+            "_canonical": {
+                "schema_version": 1,
+                "event": {
+                    "name": "fallback_create",
+                    "operation": "open",
+                    "managed": True,
+                    "source": "poundcake",
+                },
+                "route": {
+                    "label": "Core route",
+                    "execution_target": "rackspace_core",
+                    "destination_target": "primary",
+                    "provider_config": {},
+                },
+                "order": {
+                    "id": 402,
+                    "req_id": "REQ-HPA",
+                },
+                "alert": {
+                    "group_name": "kube-hpa-maxed-out",
+                    "severity": "warning",
+                    "status": "firing",
+                    "fingerprint": "hpa-fingerprint",
+                    "instance": "10.236.13.166:8080",
+                    "starts_at": "2026-04-27T17:10:00Z",
+                    "ends_at": None,
+                    "labels": {
+                        "alertname": "kube-hpa-maxed-out",
+                        "namespace": "openstack",
+                        "horizontalpodautoscaler": "cinder-api",
+                        "node_hostname": "10.236.13.166",
+                        "instance": "10.236.13.166:8080",
+                        "job": "kube-state-metrics",
+                        "pod": "opentelemetry-kube-stack-kube-state-metrics-7685fff545-hk854",
+                        "service": "opentelemetry-kube-stack-kube-state-metrics",
+                        "severity": "warning",
+                    },
+                    "annotations": {
+                        "summary": "HPA is running at max replicas",
+                        "description": (
+                            "HPA openstack/cinder-api has been running at max replicas "
+                            "for longer than 5 minutes on cluster."
+                        ),
+                    },
+                    "generator_url": "https://prometheus.example/graph?g0.expr=hpa",
+                },
+                "links": [
+                    {"label": "Source", "url": "https://prometheus.example/graph?g0.expr=hpa"},
+                ],
+                "text": {
+                    "headline": "Alert requires attention",
+                    "summary": (
+                        "PoundCake did not find a matching workflow for this alert and "
+                        "opened a communication for human response."
+                    ),
+                    "detail": "No matching workflow is configured for this alert.",
+                    "resolution": "",
+                },
+                "remediation": {
+                    "summary": {
+                        "total": 0,
+                        "succeeded": 0,
+                        "failed": 0,
+                        "skipped": 0,
+                        "incomplete": 0,
+                    },
+                    "steps": [],
+                    "before_excerpt": "",
+                    "after_excerpt": "",
+                    "failure_excerpt": "",
+                    "latest_completed_step": None,
+                },
+            }
+        }
+    }
+
+
 def _remediation_payload() -> dict:
     return {
         "context": {
@@ -220,6 +300,25 @@ def test_render_provider_content_rackspace_core_uses_operator_first_sections() -
         rendered["body"].index("[b]Identifiers[/b]"),
     ]
     assert heading_positions == sorted(heading_positions)
+
+
+def test_render_provider_content_rackspace_core_includes_kubernetes_resource_scope() -> None:
+    rendered = render_provider_content("rackspace_core", "create", _hpa_maxed_payload())
+
+    assert "openstack/cinder-api" in rendered["subject"]
+    assert "[b]Alert Summary:[/b] HPA is running at max replicas" in rendered["body"]
+    assert "[b]Resource:[/b] openstack/cinder-api" in rendered["body"]
+    assert "[b]Horizontal Pod Autoscaler:[/b] cinder-api" in rendered["body"]
+    assert "[b]Namespace:[/b] openstack" in rendered["body"]
+    assert "[b]Node:[/b] 10.236.13.166" in rendered["body"]
+    assert (
+        "[b]Pod:[/b] opentelemetry-kube-stack-kube-state-metrics-7685fff545-hk854"
+        in rendered["body"]
+    )
+    assert (
+        "[b]Source:[/b] [url=https://prometheus.example/graph?g0.expr=hpa]Source[/url]"
+        in rendered["body"]
+    )
 
 
 def test_render_provider_content_jira_returns_adf_comment() -> None:

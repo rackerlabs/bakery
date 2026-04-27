@@ -19,6 +19,7 @@ from bakery.schemas import (
     DeviceAuthorizationStartResponse,
     MonitorBootstrapCredentialResponse,
     MonitorEventResponse,
+    MonitorRemovalResponse,
     MonitorRouteInventoryResponse,
     MonitorSummaryResponse,
     OperationAnalyticsResponse,
@@ -312,5 +313,14 @@ class BakeryClient:
             payload,
             MonitorBootstrapCredentialResponse,
             "Invalid bootstrap-credential response",
+        )
+        return response.model_dump(mode="json")
+
+    def remove_monitor(self, monitor_uuid: str) -> dict[str, Any]:
+        payload = self._request("DELETE", f"/api/v1/admin/monitors/{monitor_uuid}")
+        response = self._validate_model(
+            payload,
+            MonitorRemovalResponse,
+            "Invalid monitor-removal response",
         )
         return response.model_dump(mode="json")

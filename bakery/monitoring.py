@@ -15,11 +15,15 @@ from sqlalchemy.orm import Session
 
 from bakery.config import settings
 from bakery.models import (
+    CollectionJob,
     Monitor,
     MonitorBootstrapCredential,
     MonitorEvent,
+    MonitorOutageRouteState,
     MonitorRouteCatalogEntry,
+    Ticket,
 )
+from bakery.schemas import MonitorRemovalResponse
 from bakery.secret_store import encrypt_secret
 from shared.bakery_contract import (
     MonitorBootstrapCredentialResponse,
@@ -141,6 +145,58 @@ def create_or_rotate_bootstrap_credential(
         key_id=credential.key_id,
         secret=secret,
         created_at=credential.created_at,
+    )
+
+
+def remove_monitor(
+    db: Session,
+    *,
+    monitor_uuid: str,
+    removed_by: str,
+) -> MonitorRemovalResponse:
+    """Remove a decommissioned monitor and detach durable ticket history."""
+
+    monitor = db.query(Monitor).filter(Monitor.monitor_uuid == monitor_uuid).first()
+    if monitor is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Monitor not found")
+
+    now = _now()
+    monitor_id = monitor.monitor_id
+    affected_counts = {
+        "route_catalog_entries": db.query(MonitorRouteCatalogEntry)
+        .filter(MonitorRouteCatalogEntry.monitor_uuid == monitor_uuid)
+        .delete(synchronize_session=False),
+        "outage_route_states": db.query(MonitorOutageRouteState)
+        .filter(MonitorOutageRouteState.monitor_uuid == monitor_uuid)
+        .delete(synchronize_session=False),
+        "monitor_events": db.query(MonitorEvent)
+        .filter(MonitorEvent.monitor_uuid == monitor_uuid)
+        .delete(synchronize_session=False),
+        "collection_jobs": db.query(CollectionJob)
+        .filter(CollectionJob.monitor_uuid == monitor_uuid)
+        .delete(synchronize_session=False),
+        "bootstrap_credentials": db.query(MonitorBootstrapCredential)
+        .filter(MonitorBootstrapCredential.monitor_id == monitor_id)
+        .delete(synchronize_session=False),
+        "tickets_detached": db.query(Ticket)
+        .filter(Ticket.monitor_uuid == monitor_uuid)
+        .update(
+            {
+                Ticket.monitor_uuid: None,
+                Ticket.updated_at: now,
+            },
+            synchronize_session=False,
+        ),
+    }
+    db.delete(monitor)
+    db.flush()
+    affected_counts["monitors"] = 1
+    return MonitorRemovalResponse(
+        monitor_uuid=monitor_uuid,
+        monitor_id=monitor_id,
+        removed_at=now,
+        removed_by=removed_by,
+        affected_counts=affected_counts,
     )
 
 

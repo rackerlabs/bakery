@@ -54,6 +54,7 @@ __all__ = [
     "MonitorMetadata",
     "MonitorRegistrationRequest",
     "MonitorRegistrationResponse",
+    "MonitorRemovalResponse",
     "MonitorRouteCatalogEntry",
     "MonitorRouteCatalogSyncRequest",
     "MonitorRouteCatalogSyncResponse",
@@ -65,6 +66,16 @@ class BaseModel(PydanticBaseModel):
     """Strict base model for Bakery-owned DTOs."""
 
     model_config = ConfigDict(extra="forbid")
+
+
+class MonitorRemovalResponse(BaseModel):
+    """Summary returned after an admin removes a decommissioned monitor."""
+
+    monitor_uuid: str
+    monitor_id: str
+    removed_at: datetime
+    removed_by: str
+    affected_counts: Dict[str, int] = Field(default_factory=dict)
 
 
 class TicketCreateRequest(BaseModel):

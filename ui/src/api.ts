@@ -7,6 +7,7 @@ import type {
   JobFilters,
   MonitorDetail,
   MonitorEventRow,
+  MonitorRemovalResult,
   MonitorRow,
   OperationAnalyticsRow,
   Overview,
@@ -105,6 +106,10 @@ export const api = {
     request<MonitorRow[]>(`/api/v1/reports/monitors${reportSearch(filters)}`),
   monitorDetail: (monitorUuid: string) =>
     request<MonitorDetail>(`/api/v1/reports/monitors/${monitorUuid}/detail`),
+  removeMonitor: (monitorUuid: string) =>
+    request<MonitorRemovalResult>(`/api/v1/admin/monitors/${monitorUuid}`, {
+      method: "DELETE",
+    }),
   monitorEvents: (filters: ReportFilters = {}) =>
     request<MonitorEventRow[]>(`/api/v1/reports/monitor-events${reportSearch(filters)}`),
   routes: (filters: ReportFilters = {}) =>

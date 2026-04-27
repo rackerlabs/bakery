@@ -128,6 +128,13 @@ button[type="submit"] {
   border: 1px solid rgba(23, 33, 43, 0.08);
 }
 
+.danger-button {
+  padding: 12px 18px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--danger) 0%, #7f2d3d 100%);
+  box-shadow: 0 18px 32px rgba(127, 45, 61, 0.18);
+}
+
 .text-link {
   color: var(--accent-strong);
   font-weight: 600;
@@ -561,6 +568,16 @@ label {
 .callout-stack {
   display: grid;
   gap: 16px;
+}
+
+.danger-zone {
+  border-color: rgba(180, 66, 66, 0.24);
+  background: linear-gradient(180deg, rgba(180, 66, 66, 0.08), rgba(255, 255, 255, 0.86));
+}
+
+.remove-monitor-form {
+  display: grid;
+  gap: 14px;
 }
 
 .section-header,

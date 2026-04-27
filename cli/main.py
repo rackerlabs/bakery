@@ -49,6 +49,21 @@ def _print_monitor_list(
     print_output(rows, _output_format(ctx))
 
 
+def _resolve_monitor_ref(ctx: click.Context, monitor_ref: str) -> dict[str, Any]:
+    rows = _client(ctx).report_monitors(monitor_uuid=monitor_ref)
+    if rows:
+        return rows[0]
+
+    matches = [
+        row
+        for row in _client(ctx).report_monitors(limit=1000)
+        if row.get("monitor_id") == monitor_ref
+    ]
+    if not matches:
+        raise BakeryClientError(f"Monitor '{monitor_ref}' not found")
+    return matches[0]
+
+
 def _choose_provider(providers: list[ProviderInfo]) -> str:
     if len(providers) == 1:
         return providers[0].name
@@ -251,6 +266,36 @@ def monitors_events(
             )
         )
         print_output(rows, _output_format(ctx))
+    except BakeryClientError as exc:
+        print_error(str(exc))
+        raise click.Abort() from exc
+
+
+@monitors.command("remove")
+@click.argument("monitor_refs", nargs=-1, required=True)
+@click.option("--yes", "assume_yes", is_flag=True, help="Remove without interactive confirmation")
+@click.pass_context
+def monitors_remove(
+    ctx: click.Context,
+    monitor_refs: tuple[str, ...],
+    assume_yes: bool,
+) -> None:
+    try:
+        resolved = [_resolve_monitor_ref(ctx, monitor_ref) for monitor_ref in monitor_refs]
+        if not assume_yes:
+            for monitor in resolved:
+                click.confirm(
+                    (
+                        f"Remove monitor {monitor['monitor_id']} ({monitor['monitor_uuid']}) "
+                        "and delete its registry data?"
+                    ),
+                    abort=True,
+                )
+        results = [
+            _client(ctx).remove_monitor(str(monitor["monitor_uuid"]))
+            for monitor in resolved
+        ]
+        print_output(results[0] if len(results) == 1 else results, _output_format(ctx))
     except BakeryClientError as exc:
         print_error(str(exc))
         raise click.Abort() from exc

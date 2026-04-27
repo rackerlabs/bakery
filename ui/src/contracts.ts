@@ -81,6 +81,14 @@ export type MonitorRow = {
   last_seen_payload: Record<string, unknown> | null;
 };
 
+export type MonitorRemovalResult = {
+  monitor_uuid: string;
+  monitor_id: string;
+  removed_at: string;
+  removed_by: string;
+  affected_counts: Record<string, number>;
+};
+
 export type MonitorEventRow = {
   monitor_uuid: string;
   event_type: string;

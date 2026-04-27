@@ -8,17 +8,21 @@ import types
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from bakery.api import tickets as ticket_api
+from bakery.auth import require_bootstrap_admin_access
 from bakery.database import Base, get_db
 from bakery.models import (
     CollectionJob,
     Monitor,
+    MonitorBootstrapCredential,
     MonitorEvent,
+    MonitorOutageRouteState,
     MonitorRouteCatalogEntry,
     Ticket,
     TicketOperation,
@@ -156,6 +160,27 @@ def _seed_reporting_data(db: Session) -> None:
             event_type="heartbeat_received",
             payload={"status": "healthy"},
             created_at=now - timedelta(minutes=3),
+        )
+    )
+    db.add(
+        MonitorOutageRouteState(
+            monitor_uuid=monitor_one.monitor_uuid,
+            scope="workload",
+            owner_key="region-a/example-namespace",
+            route_id="servicenow-ticket",
+            ticket_id="ticket-123",
+            last_state="healthy",
+            created_at=now - timedelta(hours=1),
+            updated_at=now - timedelta(hours=1),
+        )
+    )
+    db.add(
+        MonitorBootstrapCredential(
+            monitor_id=monitor_one.monitor_id,
+            key_id="bootstrap",
+            encrypted_secret="encrypted-bootstrap-secret",
+            created_at=now - timedelta(days=2),
+            updated_at=now - timedelta(days=2),
         )
     )
 
@@ -397,6 +422,121 @@ def test_monitor_detail_endpoint_returns_recent_activity_and_latest_successes(
         "ticket-123",
         "ticket-dryrun",
     }
+
+
+def test_admin_monitor_delete_removes_registry_rows_and_detaches_tickets(
+    client: TestClient,
+) -> None:
+    app = client.app
+
+    def _admin_access() -> str:
+        return "operator:admin"
+
+    app.dependency_overrides[require_bootstrap_admin_access] = _admin_access
+    try:
+        response = client.delete("/api/v1/admin/monitors/monitor-uuid-1")
+    finally:
+        app.dependency_overrides.pop(require_bootstrap_admin_access, None)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["monitor_uuid"] == "monitor-uuid-1"
+    assert payload["monitor_id"] == "alpha-monitor"
+    assert payload["removed_by"] == "operator:admin"
+    assert payload["affected_counts"] == {
+        "route_catalog_entries": 1,
+        "outage_route_states": 1,
+        "monitor_events": 1,
+        "collection_jobs": 4,
+        "bootstrap_credentials": 1,
+        "tickets_detached": 2,
+        "monitors": 1,
+    }
+
+    monitors = client.get("/api/v1/reports/monitors")
+    assert monitors.status_code == 200
+    assert [item["monitor_id"] for item in monitors.json()] == ["beta-monitor"]
+
+    overview = client.get("/api/v1/reports/overview")
+    assert overview.status_code == 200
+    assert overview.json()["monitors_total"] == 1
+    assert overview.json()["monitors_unreachable"] == 1
+
+    filters = client.get("/api/v1/reports/filter-options")
+    assert filters.status_code == 200
+    assert [item["monitor_id"] for item in filters.json()["monitors"]] == ["beta-monitor"]
+
+    db = next(client.app.dependency_overrides[get_db]())
+    assert db.query(Monitor).filter(Monitor.monitor_uuid == "monitor-uuid-1").first() is None
+    assert (
+        db.query(MonitorRouteCatalogEntry)
+        .filter(MonitorRouteCatalogEntry.monitor_uuid == "monitor-uuid-1")
+        .count()
+        == 0
+    )
+    assert (
+        db.query(MonitorOutageRouteState)
+        .filter(MonitorOutageRouteState.monitor_uuid == "monitor-uuid-1")
+        .count()
+        == 0
+    )
+    assert (
+        db.query(MonitorEvent).filter(MonitorEvent.monitor_uuid == "monitor-uuid-1").count()
+        == 0
+    )
+    assert (
+        db.query(CollectionJob).filter(CollectionJob.monitor_uuid == "monitor-uuid-1").count()
+        == 0
+    )
+    assert (
+        db.query(MonitorBootstrapCredential)
+        .filter(MonitorBootstrapCredential.monitor_id == "alpha-monitor")
+        .count()
+        == 0
+    )
+    assert (
+        db.query(Ticket).filter(Ticket.internal_ticket_id == "ticket-123").one().monitor_uuid
+        is None
+    )
+    assert (
+        db.query(Ticket).filter(Ticket.internal_ticket_id == "ticket-dryrun").one().monitor_uuid
+        is None
+    )
+    assert (
+        db.query(TicketOperation).filter(TicketOperation.internal_ticket_id == "ticket-123").count()
+        == 1
+    )
+
+
+def test_admin_monitor_delete_returns_404_for_missing_monitor(client: TestClient) -> None:
+    app = client.app
+
+    def _admin_access() -> str:
+        return "operator:admin"
+
+    app.dependency_overrides[require_bootstrap_admin_access] = _admin_access
+    try:
+        response = client.delete("/api/v1/admin/monitors/not-a-monitor")
+    finally:
+        app.dependency_overrides.pop(require_bootstrap_admin_access, None)
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Monitor not found"
+
+
+def test_admin_monitor_delete_requires_admin_access(client: TestClient) -> None:
+    app = client.app
+
+    def _denied_access() -> str:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    app.dependency_overrides[require_bootstrap_admin_access] = _denied_access
+    try:
+        response = client.delete("/api/v1/admin/monitors/monitor-uuid-1")
+    finally:
+        app.dependency_overrides.pop(require_bootstrap_admin_access, None)
+
+    assert response.status_code == 403
 
 
 def test_backlog_report_classifies_dry_run_rows_and_actions(client: TestClient) -> None:

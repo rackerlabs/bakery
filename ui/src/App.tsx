@@ -39,6 +39,7 @@ import type {
   MonitorDetail,
   MonitorEventRow,
   MonitorFilterOption,
+  MonitorRemovalResult,
   MonitorRow,
   OperationAnalyticsRow,
   Overview,
@@ -765,11 +766,24 @@ function MonitorDetailPanel({
   detail,
   collectors,
   onOpenJob,
+  canRemoveMonitor,
+  onRemoveMonitor,
+  removePending,
 }: {
   detail: MonitorDetail;
   collectors: CollectionCollector[];
   onOpenJob: (jobId: string) => void;
+  canRemoveMonitor: boolean;
+  onRemoveMonitor: (monitor: MonitorRow) => void;
+  removePending: boolean;
 }) {
+  const [confirmation, setConfirmation] = useState("");
+  const confirmationMatches = confirmation.trim() === detail.monitor.monitor_id;
+
+  useEffect(() => {
+    setConfirmation("");
+  }, [detail.monitor.monitor_uuid]);
+
   return (
     <div className="detail-stack">
       <section className="detail-card">
@@ -920,6 +934,44 @@ function MonitorDetailPanel({
           </div>
         )}
       </section>
+
+      {canRemoveMonitor ? (
+        <section className="detail-card danger-zone">
+          <div className="section-header">
+            <div>
+              <h3>Remove monitor</h3>
+              <p className="subtle-copy">
+                Delete registry data for this decommissioned monitor and detach its tickets.
+              </p>
+            </div>
+          </div>
+          <form
+            className="remove-monitor-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (confirmationMatches) {
+                onRemoveMonitor(detail.monitor);
+              }
+            }}
+          >
+            <label>
+              Confirm monitor ID
+              <input
+                value={confirmation}
+                onChange={(event) => setConfirmation(event.target.value)}
+                placeholder={detail.monitor.monitor_id}
+              />
+            </label>
+            <button
+              type="submit"
+              className="danger-button"
+              disabled={!confirmationMatches || removePending}
+            >
+              {removePending ? "Removing..." : "Remove monitor"}
+            </button>
+          </form>
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -932,6 +984,7 @@ function MonitorsPage({
   setSelectedMonitorUuid,
   collectors,
   onOpenJob,
+  canRemoveMonitor,
 }: {
   filters: ConsoleFilters;
   slowPollMs: number | false;
@@ -940,7 +993,11 @@ function MonitorsPage({
   setSelectedMonitorUuid: (monitorUuid?: string) => void;
   collectors: CollectionCollector[];
   onOpenJob: (jobId: string) => void;
+  canRemoveMonitor: boolean;
 }) {
+  const queryClient = useQueryClient();
+  const [removeActionError, setRemoveActionError] = useState<string | null>(null);
+  const [removedMessage, setRemovedMessage] = useState<string | null>(null);
   const query = useQuery({
     queryKey: ["monitors", filters],
     queryFn: () => api.monitors(mergeFilters(filters, { limit: 250 })),
@@ -953,12 +1010,52 @@ function MonitorsPage({
     refetchInterval: fastPollMs,
   });
   const monitors = query.data ?? [];
+  const removeMonitorMutation = useMutation({
+    mutationFn: (monitor: MonitorRow) => api.removeMonitor(monitor.monitor_uuid),
+    onSuccess: async (result: MonitorRemovalResult) => {
+      setRemoveActionError(null);
+      setRemovedMessage(`Removed monitor ${result.monitor_id}.`);
+      queryClient.setQueriesData<MonitorRow[]>({ queryKey: ["monitors"] }, (current) =>
+        current?.filter((monitor) => monitor.monitor_uuid !== result.monitor_uuid) ?? current,
+      );
+      queryClient.setQueryData<FilterOptions>(["filterOptions"], (current) =>
+        current
+          ? {
+              ...current,
+              monitors: current.monitors.filter(
+                (monitor) => monitor.monitor_uuid !== result.monitor_uuid,
+              ),
+            }
+          : current,
+      );
+      setSelectedMonitorUuid(undefined);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["overview"] }),
+        queryClient.invalidateQueries({ queryKey: ["filterOptions"] }),
+        queryClient.invalidateQueries({ queryKey: ["monitors"] }),
+        queryClient.invalidateQueries({ queryKey: ["monitorDetail"] }),
+        queryClient.invalidateQueries({ queryKey: ["monitorEvents"] }),
+        queryClient.invalidateQueries({ queryKey: ["routes"] }),
+        queryClient.invalidateQueries({ queryKey: ["jobs"] }),
+        queryClient.invalidateQueries({ queryKey: ["backlog"] }),
+        queryClient.invalidateQueries({ queryKey: ["providers"] }),
+        queryClient.invalidateQueries({ queryKey: ["operations"] }),
+      ]);
+    },
+    onError: (error) => {
+      setRemoveActionError(getErrorMessage(error));
+    },
+  });
 
   useEffect(() => {
     if (!selectedMonitorUuid && monitors.length > 0) {
       setSelectedMonitorUuid(monitors[0].monitor_uuid);
     }
   }, [monitors, selectedMonitorUuid, setSelectedMonitorUuid]);
+
+  useEffect(() => {
+    setRemoveActionError(null);
+  }, [selectedMonitorUuid]);
 
   const columns = useMemo<ColumnDef<MonitorRow>[]>(
     () => [
@@ -1038,6 +1135,11 @@ function MonitorsPage({
         </div>
       </section>
 
+      {removedMessage ? <InlineError title="Monitor removed" message={removedMessage} /> : null}
+      {removeActionError ? (
+        <InlineError title="Monitor removal failed" message={removeActionError} />
+      ) : null}
+
       <div className="workspace-grid">
         <section className="card section-card">
           <div className="section-header">
@@ -1066,6 +1168,9 @@ function MonitorsPage({
               detail={detailQuery.data}
               collectors={collectors}
               onOpenJob={onOpenJob}
+              canRemoveMonitor={canRemoveMonitor}
+              onRemoveMonitor={(monitor) => removeMonitorMutation.mutate(monitor)}
+              removePending={removeMonitorMutation.isPending}
             />
           ) : (
             <EmptyPanel
@@ -2411,6 +2516,7 @@ function ConsoleShell({
   const fastPollMs = activePolling ? DETAIL_POLL_INTERVAL_MS : false;
   const currentNav = NAV_ITEMS.find((item) => location.pathname.startsWith(item.to)) ?? NAV_ITEMS[0];
   const canManageBacklog = hasPermission(me, "manage_backlog");
+  const canRemoveMonitor = hasPermission(me, "manage_bootstrap");
 
   function updateSearchParam(key: string, value?: string) {
     const next = new URLSearchParams(searchParams);
@@ -2596,6 +2702,7 @@ function ConsoleShell({
                 setSelectedMonitorUuid={(value) => updateSearchParam("monitorDetail", value)}
                 collectors={collectors}
                 onOpenJob={openJob}
+                canRemoveMonitor={canRemoveMonitor}
               />
             }
           />

@@ -130,7 +130,7 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/example/bakery:0.1.21
+          value: ghcr.io/example/bakery:0.1.22
         template: templates/bakery-deployment.yaml
 
   - it: reports Bakery version from the deployed Bakery image tag

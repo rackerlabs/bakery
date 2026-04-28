@@ -28,6 +28,7 @@ from bakery.models import (
     TicketOperation,
 )
 from bakery.operator_auth import AuthContext, require_operator, require_reader
+from bakery.reports import provider_analytics
 
 
 def _load_app(monkeypatch):
@@ -387,6 +388,29 @@ def test_report_filter_options_endpoint_returns_human_friendly_filter_data(
     assert payload["account_numbers"] == ["123456", "654321"]
     assert payload["monitors"][0]["monitor_id"] == "alpha-monitor"
     assert payload["monitors"][1]["status"] == "unreachable"
+
+
+def test_provider_analytics_includes_configured_active_provider_without_activity() -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=engine)
+    session = sessionmaker(autocommit=False, autoflush=False, bind=engine)()
+    try:
+        payload = provider_analytics(session)
+        assert [row.provider_type for row in payload] == ["rackspace_core"]
+        assert payload[0].route_count == 0
+        assert payload[0].ticket_count == 0
+        assert payload[0].open_ticket_count == 0
+
+        assert provider_analytics(session, provider_type="servicenow") == []
+        filtered = provider_analytics(session, provider_type="rackspace_core")
+        assert [row.provider_type for row in filtered] == ["rackspace_core"]
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)
 
 
 def test_monitor_detail_endpoint_returns_recent_activity_and_latest_successes(

@@ -44,6 +44,19 @@ kubectl -n bakery create secret generic bakery-rackspace-core \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
+If the operator UI or `bakeryctl` will be used with local password login, create the local operator
+auth secret with environment-specific values from a secure source:
+
+```bash
+kubectl -n bakery create secret generic bakery-operator-auth \
+  --from-literal=username='<operator-username>' \
+  --from-literal=password='<operator-password>' \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Do not put the actual username, password, HMAC keys, provider credentials, or tokens in this guide
+or in public examples.
+
 Minimum Bakery override shape:
 
 ```yaml
@@ -55,6 +68,10 @@ bakery:
   config:
     activeProvider: rackspace_core
     ticketingDryRun: true
+  operatorAuth:
+    local:
+      enabled: true
+      existingSecret: bakery-operator-auth
   gateway:
     enabled: true
     gatewayName: flex-gateway
@@ -91,6 +108,16 @@ This remote guide assumes split-host UI mode:
 - `https://bakery.example.com` serves the Bakery API
 - `https://bakery-ui.example.net` serves the Bakery operator UI
 
+The API and UI can be attached to different Gateway resources. Keep API routing under
+`bakery.gateway.*`, UI routing under `bakery.ui.gateway.*`, `bakery.ui.publicUrl` set to the UI
+origin, and `bakery.ui.apiBaseUrl` set to the API origin.
+
+For browser-based operator login, avoid cross-site session cookies when the UI and API hostnames
+are on different registrable domains. Route `/api` on the UI hostname to the Bakery API service
+through the UI Gateway and set `bakery.ui.apiBaseUrl` to the UI origin. When `bakery.ui.apiBaseUrl`
+matches `bakery.ui.publicUrl`, the chart adds this `/api` rule to the UI `HTTPRoute` ahead of the
+`/` UI backend rule. The separate API hostname can stay in place for service and operator access.
+
 The Bakery chart still deploys the UI workload automatically. It does not create the split UI
 Gateway, but it does manage the named UI listener on that existing Gateway and attach the UI
 `HTTPRoute`. Provision the `bakery-ui-gateway` Gateway and DNS out of band first.
@@ -122,7 +149,12 @@ curl -fsS https://bakery.example.com/docs > /dev/null
 curl -fsS https://bakery.example.com/redoc > /dev/null
 curl -fsS https://bakery.example.com/openapi.json > /dev/null
 curl -fsS https://bakery.example.com/metrics > /dev/null
+curl -fsS https://bakery.example.com/api/v1/auth/providers
 ```
+
+If `/api/v1/auth/providers` returns an empty list while local operator auth is intended, verify the
+secret named by `bakery.operatorAuth.local.existingSecret` exists in the Bakery namespace and has
+both `username` and `password` keys.
 
 ## Bootstrap Credential
 

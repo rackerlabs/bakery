@@ -17,18 +17,12 @@ from bakery.api.tickets import _enqueue_ticket_action_request, create_ticket_req
 from bakery.collection_jobs import expire_collection_job_leases
 from bakery.config import settings
 from bakery.database import SessionLocal
-from bakery.formatters import (
-    device_context_from_payload,
-    provider_config_from_context,
-    render_provider_content,
-)
 from bakery.metrics import (
     BAKERY_DEAD_LETTER_TOTAL,
     BAKERY_OPERATION_LATENCY_SECONDS,
     BAKERY_OPERATIONS_TOTAL,
     BAKERY_RETRIES_TOTAL,
 )
-from bakery.mixer.factory import get_mixer
 from bakery.models import (
     Monitor,
     MonitorOutageRouteState,
@@ -37,6 +31,8 @@ from bakery.models import (
     TicketOperation,
 )
 from bakery.monitoring import get_outage_enabled_routes, record_monitor_event
+from bakery.providers import get_provider
+from bakery.providers.types import ProviderExecutionContext
 from bakery.schemas import TicketCommentRequest, TicketCreateRequest
 
 logger = structlog.get_logger()
@@ -52,239 +48,9 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
-def _is_non_empty(value: Any) -> bool:
-    if value is None:
-        return False
-    if isinstance(value, str):
-        return bool(value.strip())
-    if isinstance(value, (list, dict)):
-        return len(value) > 0
-    return True
-
-
-def _first_non_empty(*values: Any) -> Any:
-    for value in values:
-        if _is_non_empty(value):
-            return value
-    return None
-
-
-def _build_provider_payload(
-    action: str,
-    ticket: Ticket,
-    payload: dict[str, Any],
-) -> dict[str, Any]:
-    provider = str(ticket.provider_type or settings.active_provider or "").strip().lower()
-    context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
-    provider_payload = provider_config_from_context(provider, payload)
-
-    for key in ("source", "visibility"):
-        if context.get(key) is not None and key not in provider_payload:
-            provider_payload[key] = context.get(key)
-    if provider == "rackspace_core":
-        device_context = device_context_from_payload(action, payload)
-        if device_context:
-            provider_payload.setdefault("device_context", device_context)
-
-    if action == "create":
-        provider_payload.update(render_provider_content(provider, action, payload))
-        provider_payload.setdefault("title", payload.get("title", ""))
-        provider_payload.setdefault("description", payload.get("description", ""))
-        if payload.get("severity") is not None:
-            provider_payload.setdefault("severity", payload.get("severity"))
-        if payload.get("category") is not None:
-            provider_payload.setdefault("category", payload.get("category"))
-        if payload.get("source") is not None:
-            provider_payload.setdefault("source", payload.get("source"))
-
-        if provider == "rackspace_core":
-            provider_payload.setdefault("subject", payload.get("title", ""))
-            provider_payload.setdefault("body", payload.get("description", ""))
-            if settings.rackspace_core_default_queue:
-                provider_payload.setdefault("queue", settings.rackspace_core_default_queue)
-            if settings.rackspace_core_default_subcategory:
-                provider_payload.setdefault(
-                    "subcategory", settings.rackspace_core_default_subcategory
-                )
-        return provider_payload
-
-    if ticket.provider_ticket_id:
-        provider_payload.setdefault("ticket_id", ticket.provider_ticket_id)
-    elif provider in {"teams", "discord"}:
-        provider_payload.setdefault("ticket_id", ticket.internal_ticket_id)
-    elif settings.ticketing_dry_run:
-        # In dry-run mode we never require a provider-issued ID to proceed.
-        provider_payload.setdefault("ticket_id", f"dryrun-{ticket.internal_ticket_id}")
-    else:
-        raise ValueError("Provider ticket id is not available yet for this ticket")
-
-    if action == "update":
-        if provider in {"teams", "discord"}:
-            provider_payload.update(render_provider_content(provider, action, payload))
-            provider_payload.setdefault(
-                "message",
-                _first_non_empty(
-                    provider_payload.get("message"),
-                    payload.get("message"),
-                    payload.get("comment"),
-                    payload.get("description"),
-                    payload.get("title"),
-                )
-                or "PoundCake communication update.",
-            )
-            return provider_payload
-        updates = provider_payload.get("updates")
-        if not updates:
-            updates = {}
-            for field in ("title", "description", "severity", "category", "state"):
-                if payload.get(field) is not None:
-                    updates[field] = payload.get(field)
-            if updates:
-                provider_payload["updates"] = updates
-        if provider == "rackspace_core" and updates:
-            provider_payload.setdefault("attributes", updates)
-        return provider_payload
-
-    if action == "comment":
-        provider_payload.update(render_provider_content(provider, action, payload))
-        if provider in {"teams", "discord"}:
-            provider_payload.setdefault(
-                "message",
-                _first_non_empty(
-                    provider_payload.get("message"),
-                    payload.get("comment"),
-                    payload.get("message"),
-                    payload.get("description"),
-                    payload.get("title"),
-                )
-                or "PoundCake communication update.",
-            )
-            return provider_payload
-        provider_payload.setdefault("comment", payload.get("comment", ""))
-        if payload.get("visibility") is not None:
-            provider_payload.setdefault("visibility", payload.get("visibility"))
-        if payload.get("source") is not None:
-            provider_payload.setdefault("source", payload.get("source"))
-        return provider_payload
-
-    if action == "close":
-        provider_payload.update(render_provider_content(provider, action, payload))
-        if provider in {"teams", "discord"}:
-            provider_payload.setdefault(
-                "message",
-                _first_non_empty(
-                    provider_payload.get("message"),
-                    payload.get("message"),
-                    payload.get("comment"),
-                    payload.get("resolution_notes"),
-                    payload.get("description"),
-                    payload.get("title"),
-                )
-                or "PoundCake communication closed.",
-            )
-            return provider_payload
-        if provider == "rackspace_core":
-            status_hint = _first_non_empty(provider_payload.get("status"), payload.get("state"))
-            normalized_hint = str(status_hint or "").strip().lower().replace("_", " ")
-            if normalized_hint in {"", "closed"}:
-                status_hint = (
-                    settings.bakery_rackspace_confirmed_solved_status or "confirmed solved"
-                )
-            provider_payload.setdefault("status", str(status_hint).replace("_", " "))
-        if payload.get("resolution_notes") is not None:
-            provider_payload.setdefault("close_notes", payload.get("resolution_notes"))
-        if payload.get("resolution_code") is not None:
-            provider_payload.setdefault("resolution_code", payload.get("resolution_code"))
-        if payload.get("state") is not None:
-            provider_payload.setdefault("state", payload.get("state"))
-        if payload.get("source") is not None:
-            provider_payload.setdefault("source", payload.get("source"))
-        return provider_payload
-
-    raise ValueError(f"Unsupported action: {action}")
-
-
 def _compute_backoff(attempt: int) -> int:
     raw = settings.worker_backoff_base_sec * int(math.pow(2, max(attempt - 1, 0)))
     return min(raw, settings.worker_backoff_max_sec)
-
-
-def _missing_rackspace_core_create_fields(payload: dict[str, Any]) -> list[str]:
-    required = ("account_number", "queue", "subcategory", "subject", "body")
-    missing: list[str] = []
-    for field in required:
-        value = payload.get(field)
-        if value is None or (isinstance(value, str) and not value.strip()):
-            missing.append(field)
-    return missing
-
-
-def _preflight_missing_fields(provider: str, action: str, payload: dict[str, Any]) -> list[str]:
-    def missing(*fields: str) -> list[str]:
-        out: list[str] = []
-        for field in fields:
-            value = payload.get(field)
-            if value is None or (isinstance(value, str) and not value.strip()):
-                out.append(field)
-        return out
-
-    if provider == "rackspace_core":
-        if action == "create":
-            return _missing_rackspace_core_create_fields(payload)
-        if action == "update":
-            errors = missing("ticket_id")
-            has_updates = _is_non_empty(payload.get("attributes")) or _is_non_empty(
-                payload.get("updates")
-            )
-            if not has_updates:
-                errors.append("attributes|updates")
-            return errors
-        if action == "close":
-            return missing("ticket_id")
-        if action == "comment":
-            return missing("ticket_id", "comment")
-        return []
-
-    if provider == "servicenow":
-        if action in {"update", "close"}:
-            return missing("ticket_id")
-        if action == "comment":
-            return missing("ticket_id", "comment")
-        return []
-
-    if provider == "jira":
-        if action == "create":
-            return missing("project_key")
-        if action in {"update", "close"}:
-            return missing("ticket_id")
-        if action == "comment":
-            return missing("ticket_id", "comment")
-        return []
-
-    if provider == "github":
-        if action == "create":
-            return missing("owner", "repo")
-        if action in {"update", "close"}:
-            return missing("owner", "repo", "ticket_id")
-        if action == "comment":
-            return missing("owner", "repo", "ticket_id", "comment")
-        return []
-
-    if provider == "pagerduty":
-        if action == "create":
-            return missing("service_id", "from_email")
-        if action in {"update", "close"}:
-            return missing("ticket_id", "from_email")
-        if action == "comment":
-            return missing("ticket_id", "from_email", "comment")
-        return []
-
-    if provider in {"teams", "discord"}:
-        if action in {"create", "update", "close", "comment"}:
-            return missing("message")
-        return []
-
-    return []
 
 
 def _claim_operations(batch_size: int) -> list[TicketOperation]:
@@ -356,20 +122,9 @@ def _persist_success(operation_id: str, result: dict[str, Any]) -> None:
             ticket.provider_ticket_id = str(external_ticket_id)
             ticket.state = "open"
         elif operation.action == "close":
-            if (ticket.provider_type or settings.active_provider) == "rackspace_core":
-                normalized_payload = operation.normalized_payload or {}
-                requested_state = str(
-                    normalized_payload.get("status")
-                    or normalized_payload.get("state")
-                    or (operation.request_payload or {}).get("state")
-                    or ""
-                ).lower()
-                if requested_state.replace(" ", "_") == "confirmed_solved":
-                    ticket.state = "confirmed_solved"
-                else:
-                    ticket.state = "closed"
-            else:
-                ticket.state = "closed"
+            data = result.get("data")
+            provider_state = data.get("state") if isinstance(data, dict) else None
+            ticket.state = str(provider_state).strip() if provider_state else "closed"
         elif operation.action == "update":
             ticket.state = "updating"
         elif operation.action == "comment":
@@ -723,17 +478,29 @@ def _run_monitor_sweep() -> None:
 def _process_operation(operation: TicketOperation) -> None:
     started = time.monotonic()
     ticket = _load_ticket(operation.internal_ticket_id)
-    provider = str(ticket.provider_type or settings.active_provider or "").strip().lower()
-    payload = _build_provider_payload(operation.action, ticket, operation.request_payload)
+    provider_type = str(ticket.provider_type or settings.active_provider or "").strip().lower()
+    provider = get_provider(provider_type)
+    ctx = ProviderExecutionContext(
+        provider_type=provider_type,
+        action=operation.action,
+        internal_ticket_id=ticket.internal_ticket_id,
+        provider_ticket_id=ticket.provider_ticket_id,
+        request_payload=operation.request_payload,
+        dry_run=settings.ticketing_dry_run,
+    )
+    payload = provider.normalize_payload(ctx)
+    ctx = ctx.model_copy(update={"normalized_payload": payload})
     _persist_normalized_payload(operation.operation_id, payload)
-    missing = _preflight_missing_fields(provider, operation.action, payload)
+    missing = provider.validate_payload(ctx)
     if missing:
-        error = f"{provider} {operation.action} missing required fields: " + ", ".join(missing)
+        error = f"{provider_type} {operation.action} missing required fields: " + ", ".join(
+            missing
+        )
         logger.error(
             "Provider preflight validation failed",
             operation_id=operation.operation_id,
             ticket_id=operation.internal_ticket_id,
-            provider=provider,
+            provider=provider_type,
             action=operation.action,
             missing_fields=missing,
         )
@@ -745,12 +512,11 @@ def _process_operation(operation: TicketOperation) -> None:
             "Dry-run enabled; skipping provider call",
             operation_id=operation.operation_id,
             action=operation.action,
-            provider=provider,
+            provider=provider_type,
         )
         result = _build_dry_run_result(operation, ticket, payload)
     else:
-        mixer = get_mixer(provider)
-        result = asyncio.run(mixer.process_request(operation.action, payload))
+        result = asyncio.run(provider.execute(ctx)).as_provider_response()
     BAKERY_OPERATION_LATENCY_SECONDS.labels(action=operation.action).observe(
         max(time.monotonic() - started, 0.0)
     )

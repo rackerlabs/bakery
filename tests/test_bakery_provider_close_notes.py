@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from bakery.mixer.github import GitHubMixer
-from bakery.mixer.jira import JiraMixer
-from bakery.mixer.pagerduty import PagerDutyMixer
+from bakery.providers.github import GitHubProvider
+from bakery.providers.jira import JiraProvider
+from bakery.providers.pagerduty import PagerDutyProvider
 
 
 class _Response:
@@ -36,12 +36,12 @@ class _Client:
 
 @pytest.mark.asyncio
 async def test_github_close_issue_adds_close_notes_comment(monkeypatch: pytest.MonkeyPatch) -> None:
-    mixer = GitHubMixer()
+    provider = GitHubProvider()
     add_comment = AsyncMock(return_value={"success": True, "ticket_id": "9"})
-    monkeypatch.setattr(mixer, "_add_comment", add_comment)
-    monkeypatch.setattr("bakery.mixer.github.httpx.AsyncClient", lambda *args, **kwargs: _Client())
+    monkeypatch.setattr(provider, "_add_comment", add_comment)
+    monkeypatch.setattr("bakery.providers.github.httpx.AsyncClient", lambda *args, **kwargs: _Client())
 
-    result = await mixer._close_issue(
+    result = await provider._close_issue(
         {
             "owner": "rackerlabs",
             "repo": "poundcake",
@@ -56,12 +56,12 @@ async def test_github_close_issue_adds_close_notes_comment(monkeypatch: pytest.M
 
 @pytest.mark.asyncio
 async def test_jira_close_issue_adds_close_notes_comment(monkeypatch: pytest.MonkeyPatch) -> None:
-    mixer = JiraMixer()
+    provider = JiraProvider()
     add_comment = AsyncMock(return_value={"success": True, "ticket_id": "OPS-9"})
-    monkeypatch.setattr(mixer, "_add_comment", add_comment)
-    monkeypatch.setattr("bakery.mixer.jira.httpx.AsyncClient", lambda *args, **kwargs: _Client())
+    monkeypatch.setattr(provider, "_add_comment", add_comment)
+    monkeypatch.setattr("bakery.providers.jira.httpx.AsyncClient", lambda *args, **kwargs: _Client())
 
-    result = await mixer._close_issue(
+    result = await provider._close_issue(
         {
             "ticket_id": "OPS-9",
             "close_notes": {"type": "doc", "version": 1, "content": []},
@@ -74,15 +74,15 @@ async def test_jira_close_issue_adds_close_notes_comment(monkeypatch: pytest.Mon
 
 @pytest.mark.asyncio
 async def test_pagerduty_close_incident_adds_close_note(monkeypatch: pytest.MonkeyPatch) -> None:
-    mixer = PagerDutyMixer()
+    provider = PagerDutyProvider()
     add_note = AsyncMock(return_value={"success": True, "ticket_id": "PD-9"})
-    monkeypatch.setattr(mixer, "_add_note", add_note)
+    monkeypatch.setattr(provider, "_add_note", add_note)
     monkeypatch.setattr(
-        "bakery.mixer.pagerduty.httpx.AsyncClient",
+        "bakery.providers.pagerduty.httpx.AsyncClient",
         lambda *args, **kwargs: _Client(),
     )
 
-    result = await mixer._close_incident(
+    result = await provider._close_incident(
         {
             "ticket_id": "PD-9",
             "from_email": "alerts@example.com",

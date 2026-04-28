@@ -52,6 +52,7 @@ def test_bakery_openapi_exposes_communications_and_tickets(monkeypatch) -> None:
     assert "/api/v1/collection-jobs" in paths
     assert "/api/v1/collection-jobs/collectors" in paths
     assert "/api/v1/operator/tickets/{ticket_id}" in paths
+    assert "/api/v1/providers/bootstrap" in paths
     assert "/api/v1/auth/providers" in paths
     assert "/api/v1/settings" in paths
     assert any(path.startswith("/api/v1/tickets") for path in paths)

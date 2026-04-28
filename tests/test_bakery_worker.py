@@ -11,7 +11,8 @@ def _worker_source() -> str:
 
 
 def test_rackspace_account_number_mapping_supports_plain_label_name() -> None:
-    source = _worker_source()
+    repo_root = Path(__file__).resolve().parents[1]
+    source = (repo_root / "bakery/providers/payloads.py").read_text(encoding="utf-8")
     assert "provider_config_from_context(provider, payload)" in source
 
 
@@ -23,9 +24,10 @@ def test_worker_contains_dry_run_execution_path() -> None:
 
 
 def test_non_create_operations_use_synthetic_ticket_id_in_dry_run() -> None:
-    source = _worker_source()
+    repo_root = Path(__file__).resolve().parents[1]
+    source = (repo_root / "bakery/providers/payloads.py").read_text(encoding="utf-8")
     assert (
-        'provider_payload.setdefault("ticket_id", f"dryrun-{ticket.internal_ticket_id}")' in source
+        'provider_payload.setdefault("ticket_id", f"dryrun-{internal_ticket_id}")' in source
     )
 
 
@@ -35,14 +37,24 @@ def test_worker_persists_provider_normalized_payload_before_execution() -> None:
     assert "_persist_normalized_payload(operation.operation_id, payload)" in source
 
 
-def test_rackspace_core_close_payload_defaults_to_confirm_solved() -> None:
+def test_worker_does_not_branch_on_provider_specific_backends() -> None:
     source = _worker_source()
+    assert 'provider_type) == "rackspace_core"' not in source
+    assert 'provider == "rackspace_core"' not in source
+    assert 'provider == "jira"' not in source
+    assert 'provider == "servicenow"' not in source
+
+
+def test_rackspace_core_close_payload_defaults_to_confirm_solved() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    source = (repo_root / "bakery/providers/payloads.py").read_text(encoding="utf-8")
     assert 'if normalized_hint in {"", "closed"}:' in source
     assert 'settings.bakery_rackspace_confirmed_solved_status or "confirmed solved"' in source
 
 
 def test_worker_uses_renderer_layer_for_provider_payloads() -> None:
-    source = _worker_source()
+    repo_root = Path(__file__).resolve().parents[1]
+    source = (repo_root / "bakery/providers/payloads.py").read_text(encoding="utf-8")
     assert "render_provider_content(provider, action, payload)" in source
 
 

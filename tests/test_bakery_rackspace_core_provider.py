@@ -4,12 +4,12 @@ import httpx
 import pytest
 
 from bakery.config import settings
-from bakery.mixer.rackspace_core import RackspaceCoreMixer
+from bakery.providers.rackspace_core import RackspaceCoreProvider
 
 
 @pytest.mark.asyncio
 async def test_create_ticket_resolves_named_values_to_numeric_ids(monkeypatch: pytest.MonkeyPatch):
-    mixer = RackspaceCoreMixer()
+    provider = RackspaceCoreProvider()
     calls: list[list[dict[str, object]]] = []
 
     async def _fake_execute(query_set: list[dict[str, object]]):
@@ -46,9 +46,9 @@ async def test_create_ticket_resolves_named_values_to_numeric_ids(monkeypatch: p
 
         raise AssertionError(f"Unexpected query_set: {query_set}")
 
-    monkeypatch.setattr(mixer, "_execute_query", _fake_execute)
+    monkeypatch.setattr(provider, "_execute_query", _fake_execute)
 
-    result = await mixer._create_ticket(
+    result = await provider._create_ticket(
         {
             "account_number": "10",
             "queue": "Support Queue",
@@ -67,7 +67,7 @@ async def test_create_ticket_resolves_named_values_to_numeric_ids(monkeypatch: p
 
 @pytest.mark.asyncio
 async def test_create_ticket_attaches_resolved_core_device(monkeypatch: pytest.MonkeyPatch):
-    mixer = RackspaceCoreMixer()
+    provider = RackspaceCoreProvider()
     calls: list[list[dict[str, object]]] = []
 
     async def _fake_execute(query_set: list[dict[str, object]]):
@@ -124,9 +124,9 @@ async def test_create_ticket_attaches_resolved_core_device(monkeypatch: pytest.M
 
         raise AssertionError(f"Unexpected query_set: {query_set}")
 
-    monkeypatch.setattr(mixer, "_execute_query", _fake_execute)
+    monkeypatch.setattr(provider, "_execute_query", _fake_execute)
 
-    result = await mixer._create_ticket(
+    result = await provider._create_ticket(
         {
             "account_number": "10",
             "queue": "Support Queue",
@@ -148,7 +148,7 @@ async def test_create_ticket_attaches_resolved_core_device(monkeypatch: pytest.M
 async def test_add_comment_skips_ambiguous_core_device_match(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    mixer = RackspaceCoreMixer()
+    provider = RackspaceCoreProvider()
     calls: list[list[dict[str, object]]] = []
 
     async def _fake_execute(query_set: list[dict[str, object]]):
@@ -205,9 +205,9 @@ async def test_add_comment_skips_ambiguous_core_device_match(
 
         raise AssertionError(f"Unexpected query_set: {query_set}")
 
-    monkeypatch.setattr(mixer, "_execute_query", _fake_execute)
+    monkeypatch.setattr(provider, "_execute_query", _fake_execute)
 
-    result = await mixer._add_comment(
+    result = await provider._add_comment(
         {
             "ticket_id": "260309-12345",
             "comment": "[b]test[/b]",
@@ -225,7 +225,7 @@ async def test_add_comment_skips_ambiguous_core_device_match(
 async def test_create_ticket_does_not_fail_when_device_attachment_fails(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    mixer = RackspaceCoreMixer()
+    provider = RackspaceCoreProvider()
 
     async def _fake_execute(query_set: list[dict[str, object]]):
         first = query_set[0]
@@ -280,9 +280,9 @@ async def test_create_ticket_does_not_fail_when_device_attachment_fails(
 
         raise AssertionError(f"Unexpected query_set: {query_set}")
 
-    monkeypatch.setattr(mixer, "_execute_query", _fake_execute)
+    monkeypatch.setattr(provider, "_execute_query", _fake_execute)
 
-    result = await mixer._create_ticket(
+    result = await provider._create_ticket(
         {
             "account_number": "10",
             "queue": "Support Queue",
@@ -302,18 +302,19 @@ async def test_create_ticket_does_not_fail_when_device_attachment_fails(
 
 @pytest.mark.asyncio
 async def test_close_ticket_uses_set_status_by_name(monkeypatch: pytest.MonkeyPatch):
-    mixer = RackspaceCoreMixer()
+    provider = RackspaceCoreProvider()
     calls: list[list[dict[str, object]]] = []
 
     async def _fake_execute(query_set: list[dict[str, object]]):
         calls.append(query_set)
         return [{"result": {"ok": True}}]
 
-    monkeypatch.setattr(mixer, "_execute_query", _fake_execute)
+    monkeypatch.setattr(provider, "_execute_query", _fake_execute)
 
-    result = await mixer._close_ticket({"ticket_id": "260309-12345", "status": "confirmed_solved"})
+    result = await provider._close_ticket({"ticket_id": "260309-12345", "status": "confirmed_solved"})
 
     assert result["success"] is True
+    assert result["data"]["state"] == "confirmed_solved"
     assert calls[0][0]["method"] == "setStatusByName"
     assert calls[0][0]["args"] == ["Confirm Solved"]
     assert calls[0][0]["keyword_args"] == {}
@@ -321,7 +322,7 @@ async def test_close_ticket_uses_set_status_by_name(monkeypatch: pytest.MonkeyPa
 
 @pytest.mark.asyncio
 async def test_close_ticket_defaults_to_confirm_solved(monkeypatch: pytest.MonkeyPatch):
-    mixer = RackspaceCoreMixer()
+    provider = RackspaceCoreProvider()
     calls: list[list[dict[str, object]]] = []
 
     async def _fake_execute(query_set: list[dict[str, object]]):
@@ -329,11 +330,12 @@ async def test_close_ticket_defaults_to_confirm_solved(monkeypatch: pytest.Monke
         return [{"result": {"ok": True}}]
 
     monkeypatch.setattr(settings, "bakery_rackspace_confirmed_solved_status", "confirmed solved")
-    monkeypatch.setattr(mixer, "_execute_query", _fake_execute)
+    monkeypatch.setattr(provider, "_execute_query", _fake_execute)
 
-    result = await mixer._close_ticket({"ticket_id": "260309-12345"})
+    result = await provider._close_ticket({"ticket_id": "260309-12345"})
 
     assert result["success"] is True
+    assert result["data"]["state"] == "confirmed_solved"
     assert calls[0][0]["args"] == ["Confirm Solved"]
 
 
@@ -341,7 +343,7 @@ async def test_close_ticket_defaults_to_confirm_solved(monkeypatch: pytest.Monke
 async def test_close_ticket_falls_back_to_set_attribute_on_http_error(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    mixer = RackspaceCoreMixer()
+    provider = RackspaceCoreProvider()
     calls: list[list[dict[str, object]]] = []
 
     async def _fake_execute(query_set: list[dict[str, object]]):
@@ -352,11 +354,12 @@ async def test_close_ticket_falls_back_to_set_attribute_on_http_error(
             raise httpx.HTTPStatusError("boom", request=request, response=response)
         return [{"result": {"ok": True}}]
 
-    monkeypatch.setattr(mixer, "_execute_query", _fake_execute)
+    monkeypatch.setattr(provider, "_execute_query", _fake_execute)
 
-    result = await mixer._close_ticket({"ticket_id": "260309-12345", "status": "Solved"})
+    result = await provider._close_ticket({"ticket_id": "260309-12345", "status": "Solved"})
 
     assert result["success"] is True
+    assert result["data"]["state"] == "solved"
     assert calls[0][0]["method"] == "setStatusByName"
     assert "set_attribute" in calls[1][0]
 
@@ -365,7 +368,7 @@ async def test_close_ticket_falls_back_to_set_attribute_on_http_error(
 async def test_add_comment_uses_add_message_with_numeric_source_id(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    mixer = RackspaceCoreMixer()
+    provider = RackspaceCoreProvider()
     calls: list[list[dict[str, object]]] = []
 
     async def _fake_execute(query_set: list[dict[str, object]]):
@@ -399,9 +402,9 @@ async def test_add_comment_uses_add_message_with_numeric_source_id(
 
         raise AssertionError(f"Unexpected query_set: {query_set}")
 
-    monkeypatch.setattr(mixer, "_execute_query", _fake_execute)
+    monkeypatch.setattr(provider, "_execute_query", _fake_execute)
 
-    result = await mixer._add_comment(
+    result = await provider._add_comment(
         {
             "ticket_id": "260309-12345",
             "comment": "[b]test[/b]",
@@ -417,7 +420,7 @@ async def test_add_comment_uses_add_message_with_numeric_source_id(
 async def test_close_ticket_adds_close_notes_before_status_change(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    mixer = RackspaceCoreMixer()
+    provider = RackspaceCoreProvider()
     calls: list[list[dict[str, object]]] = []
 
     async def _fake_execute(query_set: list[dict[str, object]]):
@@ -455,9 +458,9 @@ async def test_close_ticket_adds_close_notes_before_status_change(
 
         raise AssertionError(f"Unexpected query_set: {query_set}")
 
-    monkeypatch.setattr(mixer, "_execute_query", _fake_execute)
+    monkeypatch.setattr(provider, "_execute_query", _fake_execute)
 
-    result = await mixer._close_ticket(
+    result = await provider._close_ticket(
         {
             "ticket_id": "260309-12345",
             "status": "confirmed_solved",

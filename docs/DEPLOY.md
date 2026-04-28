@@ -27,7 +27,7 @@ Before rollout, add or update the `bakery` entry in `/etc/genestack/helm-chart-v
 
 - a Kubernetes cluster with the MariaDB operator installed
 - a namespace for the Bakery release
-- one provider secret for the active Bakery mixer
+- one provider secret for the active Bakery provider
 - a Bakery auth secret that includes a monitor encryption key for PoundCake monitor registration
 
 The secret names should live in your override YAML, not only on the installer command line. For
@@ -88,6 +88,20 @@ bakery:
 
 Auth0 and Azure AD flows follow the same shared/ui/cli split already used in PoundCake:
 `bakery.operatorAuth.auth0.*` and `bakery.operatorAuth.azureAd.*`.
+
+### Required Secret Checklist
+
+Keep secret values out of Helm values files and public documentation. The override files should
+name the Kubernetes secrets, and the secrets should contain these keys:
+
+- `bakery.auth.existingSecret`: `active-key-id`, `active-key`, `monitor-encryption-key`
+- `bakery.rackspaceCore.existingSecret`: `rackspace-core-url`, `rackspace-core-username`,
+  `rackspace-core-password`
+- `bakery.operatorAuth.local.existingSecret`: `username`, `password`
+
+The auth secret may also include `next-key-id` and `next-key` during HMAC rotation. Provider
+secrets for ServiceNow, Jira, GitHub, PagerDuty, Teams, and Discord use the key names shown in
+`helm/values.yaml` under each provider's `secretKeys` block.
 
 ## UI Install Modes
 
@@ -199,6 +213,19 @@ In split-host mode:
 - the API route stops serving the UI backend at `/`
 - the UI runtime config is rendered into `/runtime/config.js`
 
+The UI and API may be on completely different Gateways. In that shape, keep the API Gateway values
+under `bakery.gateway.*`, keep the UI Gateway values under `bakery.ui.gateway.*`, set
+`bakery.ui.publicUrl` to the UI origin, and set `bakery.ui.apiBaseUrl` to the API origin. Do not
+move the UI route onto the API hostname just to make login work; the API enables credentialed CORS
+from the configured UI origin.
+
+For browser login, prefer keeping API calls first-party to the UI origin. If the UI and API
+hostnames are on different registrable domains, route the UI hostname's `/api` path to the Bakery
+API service through the UI Gateway and set `bakery.ui.apiBaseUrl` to the UI origin. When
+`bakery.ui.apiBaseUrl` matches `bakery.ui.publicUrl`, the chart adds this `/api` rule to the UI
+`HTTPRoute` ahead of the `/` UI backend rule. The public API hostname can remain available through
+`bakery.gateway.*`; the browser just avoids relying on third-party cookies.
+
 Put pull secrets in `00-pull-secret-overrides.yaml` when private GHCR pulls are required.
 
 ## Install
@@ -281,6 +308,12 @@ curl -fsS https://bakery.example.com/metrics > /dev/null
 curl -fsS https://bakery.example.com/api/v1/settings
 curl -fsS https://bakery.example.com/api/v1/auth/providers
 ```
+
+If `auth_providers` is empty while operator auth is enabled, check that
+`bakery.operatorAuth.local.existingSecret` exists in the Bakery namespace and contains both
+`username` and `password`. The chart references those keys as optional secret refs so the pod can
+start even when the secret is missing, but local password login will not be offered until both keys
+resolve to non-empty values.
 
 If PoundCake is already connected, verify monitor registration and heartbeat activity:
 

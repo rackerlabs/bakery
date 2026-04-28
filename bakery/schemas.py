@@ -201,29 +201,53 @@ class ErrorResponse(BaseModel):
     detail: Optional[str] = None
 
 
-class MixerInfo(BaseModel):
-    """Information about a single mixer."""
+class ProviderInfo(BaseModel):
+    """Information about a provider."""
 
-    mixer_type: str = Field(..., description="Mixer identifier")
-    actions: List[str] = Field(..., description="Supported actions for this mixer")
+    provider_type: str = Field(..., description="Provider identifier")
+    actions: list[str] = Field(..., description="Supported actions for this provider")
+    registered: bool = Field(
+        ..., description="Whether the provider manifest has been bootstrapped into Bakery"
+    )
+    enabled: bool = Field(..., description="Whether the registered provider is enabled")
     configured: bool = Field(
         ..., description="Whether credentials are configured (not necessarily valid)"
     )
+    config_schema: dict[str, Any] = Field(
+        default_factory=dict, description="Non-secret provider configuration schema"
+    )
+    credential_requirements: list[dict[str, Any]] = Field(
+        default_factory=list, description="Non-secret provider credential descriptors"
+    )
+    bootstrap_status: str | None = Field(
+        default=None, description="Last provider bootstrap status"
+    )
 
 
-class MixerListResponse(BaseModel):
-    """Response for listing available mixers."""
+class ProviderListResponse(BaseModel):
+    """Response for listing providers."""
 
-    mixers: List[MixerInfo]
-    count: int = Field(..., description="Number of registered mixers")
+    providers: list[ProviderInfo]
+    count: int = Field(..., description="Number of registered providers")
 
 
-class MixerValidateResponse(BaseModel):
-    """Response for mixer credential validation."""
+class ProviderHealthResponse(BaseModel):
+    """Provider health-check response."""
 
-    mixer_type: str = Field(..., description="Mixer that was validated")
-    valid: bool = Field(..., description="Whether credentials are valid and connectivity works")
-    message: str = Field(..., description="Human-readable validation result")
+    provider_type: str
+    status: str
+    configured: bool
+    message: str | None = None
+    details: dict[str, Any] | None = None
+
+
+class ProviderBootstrapResponse(BaseModel):
+    """Provider bootstrap response."""
+
+    providers: list[dict[str, Any]]
+    count: int
+    failures: int
+    status: str
 
 
 class SessionResponse(BaseModel):

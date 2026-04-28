@@ -1,25 +1,28 @@
 #!/usr/bin/env python3
-"""Jira mixer for ticket management."""
+"""Jira provider for ticket management."""
 
 from typing import Dict, Any
 import httpx
 
 from bakery.config import settings
-from bakery.mixer.base import BaseMixer
+from bakery.providers.base_provider import BaseProvider
+from bakery.providers.types import ProviderExecutionContext, ProviderExecutionResult
 
 
-class JiraMixer(BaseMixer):
-    """Mixer for Jira ticketing system."""
+class JiraProvider(BaseProvider):
+    """Provider for Jira ticketing system."""
+
+    provider_type = "jira"
 
     def __init__(self) -> None:
-        """Initialize Jira mixer."""
+        """Initialize Jira provider."""
         super().__init__()
         self.base_url = settings.jira_url
         self.username = settings.jira_username
         self.api_token = settings.jira_api_token
-        self.timeout = settings.mixer_timeout_sec
+        self.timeout = settings.provider_timeout_sec
 
-    async def process_request(self, action: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, ctx: ProviderExecutionContext) -> ProviderExecutionResult:
         """
         Process Jira ticket request.
 
@@ -30,28 +33,35 @@ class JiraMixer(BaseMixer):
         Returns:
             Response dictionary with success status and ticket details
         """
+        action = ctx.action
+        data = ctx.normalized_payload or self.normalize_payload(ctx)
         if not self.base_url or not self.username or not self.api_token:
-            return {
-                "success": False,
-                "error": "Jira credentials not configured",
-            }
+            return ProviderExecutionResult(
+                success=False,
+                error="Jira credentials not configured",
+                retryable=False,
+            )
 
         try:
             if action == "create":
-                return await self._create_issue(data)
+                return self.provider_result(await self._create_issue(data))
             elif action == "update":
-                return await self._update_issue(data)
+                return self.provider_result(await self._update_issue(data))
             elif action == "close":
-                return await self._close_issue(data)
+                return self.provider_result(await self._close_issue(data))
             elif action == "comment":
-                return await self._add_comment(data)
+                return self.provider_result(await self._add_comment(data))
             elif action == "search":
-                return await self._search_issues(data)
+                return self.provider_result(await self._search_issues(data))
             else:
-                return {"success": False, "error": f"Unknown action: {action}"}
+                return ProviderExecutionResult(
+                    success=False,
+                    error=f"Unknown action: {action}",
+                    retryable=False,
+                )
 
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return ProviderExecutionResult(success=False, error=str(e))
 
     async def _create_issue(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new Jira issue."""

@@ -77,7 +77,7 @@ disable_error_code = ["assignment", "arg-type", "call-overload", "return-value",
 module = [
     "bakery.formatters",
     "bakery.worker",
-    "bakery.mixer.*",
+    "bakery.providers.*",
     "bakery.alembic.env",
 ]
 disallow_untyped_defs = false

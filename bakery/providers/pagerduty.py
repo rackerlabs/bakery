@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
-"""PagerDuty mixer for incident management."""
+"""PagerDuty provider for incident management."""
 
 from typing import Dict, Any
 import httpx
 
 from bakery.config import settings
-from bakery.mixer.base import BaseMixer
+from bakery.providers.base_provider import BaseProvider
+from bakery.providers.types import ProviderExecutionContext, ProviderExecutionResult
 
 
-class PagerDutyMixer(BaseMixer):
-    """Mixer for PagerDuty incident management."""
+class PagerDutyProvider(BaseProvider):
+    """Provider for PagerDuty incident management."""
+
+    provider_type = "pagerduty"
 
     def __init__(self) -> None:
-        """Initialize PagerDuty mixer."""
+        """Initialize PagerDuty provider."""
         super().__init__()
         self.api_key = settings.pagerduty_api_key
-        self.timeout = settings.mixer_timeout_sec
+        self.timeout = settings.provider_timeout_sec
         self.base_url = "https://api.pagerduty.com"
 
-    async def process_request(self, action: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, ctx: ProviderExecutionContext) -> ProviderExecutionResult:
         """
         Process PagerDuty incident request.
 
@@ -29,28 +32,35 @@ class PagerDutyMixer(BaseMixer):
         Returns:
             Response dictionary with success status and incident details
         """
+        action = ctx.action
+        data = ctx.normalized_payload or self.normalize_payload(ctx)
         if not self.api_key:
-            return {
-                "success": False,
-                "error": "PagerDuty API key not configured",
-            }
+            return ProviderExecutionResult(
+                success=False,
+                error="PagerDuty API key not configured",
+                retryable=False,
+            )
 
         try:
             if action == "create":
-                return await self._create_incident(data)
+                return self.provider_result(await self._create_incident(data))
             elif action == "update":
-                return await self._update_incident(data)
+                return self.provider_result(await self._update_incident(data))
             elif action == "close":
-                return await self._close_incident(data)
+                return self.provider_result(await self._close_incident(data))
             elif action == "comment":
-                return await self._add_note(data)
+                return self.provider_result(await self._add_note(data))
             elif action == "search":
-                return await self._search_incidents(data)
+                return self.provider_result(await self._search_incidents(data))
             else:
-                return {"success": False, "error": f"Unknown action: {action}"}
+                return ProviderExecutionResult(
+                    success=False,
+                    error=f"Unknown action: {action}",
+                    retryable=False,
+                )
 
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return ProviderExecutionResult(success=False, error=str(e))
 
     def _get_headers(self) -> Dict[str, str]:
         """Get headers for PagerDuty API requests."""

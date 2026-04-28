@@ -11,6 +11,7 @@ from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Query, Session
 
 from bakery.collection_jobs import collection_job_response, list_collection_jobs_query
+from bakery.config import settings
 from bakery.models import (
     CollectionJob,
     Monitor,
@@ -464,6 +465,10 @@ def provider_analytics(
             "dead_letter_count": 0,
         }
     )
+    active_provider = str(settings.active_provider or "").strip()
+    if active_provider and not any([monitor_uuid, environment_label, account_number]):
+        if provider_type in (None, "", active_provider):
+            provider_rows[active_provider]
 
     route_query = db.query(
         MonitorRouteCatalogEntry.provider_type,

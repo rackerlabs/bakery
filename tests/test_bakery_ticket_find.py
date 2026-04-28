@@ -13,7 +13,7 @@ def test_find_endpoint_queries_provider_search_when_not_dry_run() -> None:
     source = _tickets_source()
     assert '@router.post("/tickets/{ticket_id}/find", response_model=TicketResponse)' in source
     assert "if settings.ticketing_dry_run:" in source
-    assert 'await mixer.process_request("search", search_payload)' in source
+    assert "await provider.search(" in source
 
 
 def test_ticket_response_supports_cached_ticket_data_metadata() -> None:

@@ -34,7 +34,7 @@ class Message(Base):
         index=True,
         comment="Bakery internal ticket UUID exposed to PoundCake API",
     )
-    mixer_type: Mapped[str] = mapped_column(
+    provider_type: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
         comment="servicenow, jira, github, pagerduty, rackspace_core, teams, discord",
@@ -46,7 +46,7 @@ class Message(Base):
         comment="pending, success, error",
     )
     response_data: Mapped[dict[str, Any] | None] = mapped_column(
-        JSON, nullable=True, comment="Full response from mixer"
+        JSON, nullable=True, comment="Full response from provider"
     )
     error_message: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="Error details if failed"
@@ -71,7 +71,7 @@ class TicketRequest(Base):
     correlation_id: Mapped[str] = mapped_column(
         String(255), nullable=False, index=True, comment="Unique request identifier"
     )
-    mixer_type: Mapped[str] = mapped_column(
+    provider_type: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
         comment="servicenow, jira, github, pagerduty, rackspace_core, teams, discord",
@@ -107,18 +107,18 @@ class TicketRequest(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
-class MixerConfig(Base):
-    """Optional table for storing mixer-specific configuration."""
+class ProviderConfig(Base):
+    """Optional table for storing provider-specific configuration."""
 
-    __tablename__ = "mixer_configs"
+    __tablename__ = "provider_configs"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
-    mixer_type: Mapped[str] = mapped_column(
-        String(50), nullable=False, unique=True, comment="Mixer identifier"
+    provider_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, unique=True, comment="Provider identifier"
     )
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     config_data: Mapped[dict[str, Any] | None] = mapped_column(
-        JSON, nullable=True, comment="Mixer-specific settings"
+        JSON, nullable=True, comment="Provider-specific settings"
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
@@ -146,7 +146,7 @@ class TicketIdMapping(Base):
         index=True,
         comment="Bakery-generated UUID exposed to PoundCake API",
     )
-    mixer_type: Mapped[str] = mapped_column(
+    provider_type: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
         index=True,

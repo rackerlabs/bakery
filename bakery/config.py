@@ -53,9 +53,9 @@ class Settings:
         self.message_retention_hours: int = int(os.getenv("MESSAGE_RETENTION_HOURS", "24"))
         self.max_messages_per_poll: int = int(os.getenv("MAX_MESSAGES_PER_POLL", "100"))
 
-        # Mixer settings
-        self.mixer_timeout_sec: int = int(os.getenv("MIXER_TIMEOUT_SEC", "30"))
-        self.mixer_max_retries: int = int(os.getenv("MIXER_MAX_RETRIES", "3"))
+        # Provider settings
+        self.provider_timeout_sec: int = int(os.getenv("PROVIDER_TIMEOUT_SEC", "30"))
+        self.provider_max_retries: int = int(os.getenv("PROVIDER_MAX_RETRIES", "3"))
         self.ticketing_dry_run: bool = env_to_bool(os.getenv("TICKETING_DRY_RUN"), default=False)
         self.active_provider: str = os.getenv("BAKERY_ACTIVE_PROVIDER", "rackspace_core")
 

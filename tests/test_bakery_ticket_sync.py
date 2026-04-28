@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 from bakery.api import communications, tickets as ticket_api
 from bakery.database import Base
 from bakery.models import Ticket
+from bakery.providers.types import ProviderExecutionContext, ProviderExecutionResult
 
 
 def _db_session() -> Session:
@@ -58,18 +59,16 @@ async def test_find_ticket_request_persists_confirmed_solved_state(
         provider_ticket_id="260331-02458",
     )
 
-    class _FakeMixer:
-        async def process_request(
-            self, action: str, payload: dict[str, object]
-        ) -> dict[str, object]:
-            assert action == "search"
-            assert payload == {
+    class _FakePlugin:
+        async def search(self, ctx: ProviderExecutionContext) -> ProviderExecutionResult:
+            assert ctx.action == "search"
+            assert ctx.normalized_payload == {
                 "ticket_number": "260331-02458",
                 "attributes": ["number", "subject", "status.name", "is_closed", "is_closeable"],
             }
-            return {
-                "success": True,
-                "data": {
+            return ProviderExecutionResult(
+                success=True,
+                data={
                     "results": [
                         {
                             "number": "260331-02458",
@@ -77,9 +76,9 @@ async def test_find_ticket_request_persists_confirmed_solved_state(
                         }
                     ]
                 },
-            }
+            )
 
-    monkeypatch.setattr(ticket_api, "get_mixer", lambda provider: _FakeMixer())
+    monkeypatch.setattr(ticket_api, "get_provider", lambda provider: _FakePlugin())
 
     response = await ticket_api.find_ticket_request("ticket-core-1", db=db, monitor_uuid=None)
     cached = await ticket_api.get_ticket_request("ticket-core-1", db=db, monitor_uuid=None)
@@ -105,15 +104,14 @@ async def test_sync_communication_maps_resolved_provider_state_to_closed(
         provider_ticket_id="PD123",
     )
 
-    class _FakeMixer:
-        async def process_request(
-            self, action: str, payload: dict[str, object]
-        ) -> dict[str, object]:
-            assert action == "search"
-            assert payload["statuses"] == ["triggered", "acknowledged", "resolved"]
-            return {
-                "success": True,
-                "data": {
+    class _FakePlugin:
+        async def search(self, ctx: ProviderExecutionContext) -> ProviderExecutionResult:
+            assert ctx.action == "search"
+            assert ctx.normalized_payload is not None
+            assert ctx.normalized_payload["statuses"] == ["triggered", "acknowledged", "resolved"]
+            return ProviderExecutionResult(
+                success=True,
+                data={
                     "results": [
                         {
                             "id": "PD123",
@@ -121,9 +119,9 @@ async def test_sync_communication_maps_resolved_provider_state_to_closed(
                         }
                     ]
                 },
-            }
+            )
 
-    monkeypatch.setattr(ticket_api, "get_mixer", lambda provider: _FakeMixer())
+    monkeypatch.setattr(ticket_api, "get_provider", lambda provider: _FakePlugin())
 
     synced = await communications.sync_communication(
         communication_id="ticket-pd-1",

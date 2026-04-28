@@ -27,7 +27,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("correlation_id", sa.String(length=255), nullable=False),
         sa.Column("ticket_id", sa.String(length=255), nullable=True),
-        sa.Column("mixer_type", sa.String(length=50), nullable=False),
+        sa.Column("provider_type", sa.String(length=50), nullable=False),
         sa.Column("status", sa.String(length=50), nullable=False),
         sa.Column("response_data", mysql.JSON(), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
@@ -45,7 +45,7 @@ def upgrade() -> None:
         "ticket_requests",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("correlation_id", sa.String(length=255), nullable=False),
-        sa.Column("mixer_type", sa.String(length=50), nullable=False),
+        sa.Column("provider_type", sa.String(length=50), nullable=False),
         sa.Column("action", sa.String(length=50), nullable=False),
         sa.Column("request_data", mysql.JSON(), nullable=False),
         sa.Column("ticket_id", sa.String(length=255), nullable=True),
@@ -61,26 +61,26 @@ def upgrade() -> None:
         mysql_comment="Log of all ticket requests processed by Bakery",
     )
 
-    # Create mixer_configs table
+    # Create provider_configs table
     op.create_table(
-        "mixer_configs",
+        "provider_configs",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("mixer_type", sa.String(length=50), nullable=False),
+        sa.Column("provider_type", sa.String(length=50), nullable=False),
         sa.Column("enabled", sa.Boolean(), nullable=False),
         sa.Column("config_data", mysql.JSON(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("mixer_type"),
-        sa.Index("ix_mixer_configs_id", "id"),
-        mysql_comment="Mixer-specific configuration",
+        sa.UniqueConstraint("provider_type"),
+        sa.Index("ix_provider_configs_id", "id"),
+        mysql_comment="Provider-specific configuration",
     )
 
     op.create_table(
         "ticket_id_mappings",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("internal_ticket_id", sa.String(length=36), nullable=False),
-        sa.Column("mixer_type", sa.String(length=50), nullable=False),
+        sa.Column("provider_type", sa.String(length=50), nullable=False),
         sa.Column("external_ticket_id", sa.String(length=255), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
@@ -98,9 +98,9 @@ def upgrade() -> None:
         unique=False,
     )
     op.create_index(
-        "ix_ticket_id_mappings_mixer_type",
+        "ix_ticket_id_mappings_provider_type",
         "ticket_id_mappings",
-        ["mixer_type"],
+        ["provider_type"],
         unique=False,
     )
     op.create_index(
@@ -247,11 +247,11 @@ def downgrade() -> None:
     op.drop_table("tickets")
 
     op.drop_index("ix_ticket_id_mappings_external_ticket_id", table_name="ticket_id_mappings")
-    op.drop_index("ix_ticket_id_mappings_mixer_type", table_name="ticket_id_mappings")
+    op.drop_index("ix_ticket_id_mappings_provider_type", table_name="ticket_id_mappings")
     op.drop_index("ix_ticket_id_mappings_internal_ticket_id", table_name="ticket_id_mappings")
     op.drop_index("ix_ticket_id_mappings_id", table_name="ticket_id_mappings")
     op.drop_table("ticket_id_mappings")
 
-    op.drop_table("mixer_configs")
+    op.drop_table("provider_configs")
     op.drop_table("ticket_requests")
     op.drop_table("messages")

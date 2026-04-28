@@ -12,8 +12,8 @@ if "structlog" not in sys.modules:
         )
     )
 
-from bakery.models import Ticket
-from bakery.worker import _build_provider_payload
+from bakery.providers import get_provider
+from bakery.providers.types import ProviderExecutionContext
 
 
 def _canonical_payload() -> dict:
@@ -104,17 +104,18 @@ def _canonical_payload() -> dict:
     }
 
 
-def test_build_provider_payload_rackspace_core_close_uses_rendered_remediation_close_notes() -> (
+def test_provider_plugin_payload_rackspace_core_close_uses_rendered_remediation_close_notes() -> (
     None
 ):
-    ticket = Ticket(
-        internal_ticket_id="comm-1",
+    ctx = ProviderExecutionContext(
         provider_type="rackspace_core",
+        action="close",
+        internal_ticket_id="comm-1",
         provider_ticket_id="260101-00001",
-        state="open",
+        request_payload=_canonical_payload(),
     )
 
-    rendered = _build_provider_payload("close", ticket, _canonical_payload())
+    rendered = get_provider("rackspace_core").normalize_payload(ctx)
 
     assert rendered["ticket_id"] == "260101-00001"
     assert "Closing communication after successful remediation." in rendered["close_notes"]
@@ -124,13 +125,7 @@ def test_build_provider_payload_rackspace_core_close_uses_rendered_remediation_c
     assert rendered["close_notes"] != "legacy close note should not win"
 
 
-def test_build_provider_payload_discord_comment_uses_compact_rendered_payload() -> None:
-    ticket = Ticket(
-        internal_ticket_id="comm-2",
-        provider_type="discord",
-        provider_ticket_id=None,
-        state="open",
-    )
+def test_provider_plugin_payload_discord_comment_uses_compact_rendered_payload() -> None:
     payload = _canonical_payload()
     payload["context"]["_canonical"]["event"]["operation"] = "comment"
     payload["context"]["_canonical"]["event"]["name"] = "resolved_failure_notify"
@@ -146,7 +141,15 @@ def test_build_provider_payload_discord_comment_uses_compact_rendered_payload() 
         "outcome"
     ] = "Permission denied while validating"
 
-    rendered = _build_provider_payload("comment", ticket, payload)
+    ctx = ProviderExecutionContext(
+        provider_type="discord",
+        action="comment",
+        internal_ticket_id="comm-2",
+        provider_ticket_id=None,
+        request_payload=payload,
+    )
+
+    rendered = get_provider("discord").normalize_payload(ctx)
 
     assert rendered["ticket_id"] == "comm-2"
     assert rendered["message"] == "Alert resolved"

@@ -1,25 +1,28 @@
 #!/usr/bin/env python3
-"""ServiceNow mixer for ticket management."""
+"""ServiceNow provider for ticket management."""
 
 from typing import Dict, Any
 import httpx
 
 from bakery.config import settings
-from bakery.mixer.base import BaseMixer
+from bakery.providers.base_provider import BaseProvider
+from bakery.providers.types import ProviderExecutionContext, ProviderExecutionResult
 
 
-class ServiceNowMixer(BaseMixer):
-    """Mixer for ServiceNow ticketing system."""
+class ServiceNowProvider(BaseProvider):
+    """Provider for ServiceNow ticketing system."""
+
+    provider_type = "servicenow"
 
     def __init__(self) -> None:
-        """Initialize ServiceNow mixer."""
+        """Initialize ServiceNow provider."""
         super().__init__()
         self.base_url = settings.servicenow_url
         self.username = settings.servicenow_username
         self.password = settings.servicenow_password
-        self.timeout = settings.mixer_timeout_sec
+        self.timeout = settings.provider_timeout_sec
 
-    async def process_request(self, action: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, ctx: ProviderExecutionContext) -> ProviderExecutionResult:
         """
         Process ServiceNow ticket request.
 
@@ -30,28 +33,35 @@ class ServiceNowMixer(BaseMixer):
         Returns:
             Response dictionary with success status and ticket details
         """
+        action = ctx.action
+        data = ctx.normalized_payload or self.normalize_payload(ctx)
         if not self.base_url or not self.username or not self.password:
-            return {
-                "success": False,
-                "error": "ServiceNow credentials not configured",
-            }
+            return ProviderExecutionResult(
+                success=False,
+                error="ServiceNow credentials not configured",
+                retryable=False,
+            )
 
         try:
             if action == "create":
-                return await self._create_incident(data)
+                return self.provider_result(await self._create_incident(data))
             elif action == "update":
-                return await self._update_incident(data)
+                return self.provider_result(await self._update_incident(data))
             elif action == "close":
-                return await self._close_incident(data)
+                return self.provider_result(await self._close_incident(data))
             elif action == "comment":
-                return await self._add_comment(data)
+                return self.provider_result(await self._add_comment(data))
             elif action == "search":
-                return await self._search_incidents(data)
+                return self.provider_result(await self._search_incidents(data))
             else:
-                return {"success": False, "error": f"Unknown action: {action}"}
+                return ProviderExecutionResult(
+                    success=False,
+                    error=f"Unknown action: {action}",
+                    retryable=False,
+                )
 
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return ProviderExecutionResult(success=False, error=str(e))
 
     async def _create_incident(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new ServiceNow incident."""

@@ -53,3 +53,43 @@ tests:
       - equal:
           path: spec.rules[0].backendRefs[0].port
           value: 8080
+  - it: routes same-origin ui api calls to the bakery api service
+    release:
+      name: bakery
+      namespace: bakery
+    set:
+      bakery.enabled: true
+      bakery.ui.gateway.enabled: true
+      bakery.ui.gateway.gatewayName: bakery-ui-gateway
+      bakery.ui.gateway.gatewayNamespace: envoy-gateway
+      bakery.ui.gateway.listener.name: bakery-ui-https
+      bakery.ui.gateway.hostnames[0]: bakery-ui.example.net
+      bakery.ui.publicUrl: https://bakery-ui.example.net
+      bakery.ui.apiBaseUrl: https://bakery-ui.example.net/
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.rules[0].matches[0].path.type
+          value: PathPrefix
+      - equal:
+          path: spec.rules[0].matches[0].path.value
+          value: /api
+      - equal:
+          path: spec.rules[0].backendRefs[0].name
+          value: bakery
+      - equal:
+          path: spec.rules[0].backendRefs[0].port
+          value: 8000
+      - equal:
+          path: spec.rules[1].matches[0].path.type
+          value: PathPrefix
+      - equal:
+          path: spec.rules[1].matches[0].path.value
+          value: /
+      - equal:
+          path: spec.rules[1].backendRefs[0].name
+          value: bakery-ui
+      - equal:
+          path: spec.rules[1].backendRefs[0].port
+          value: 8080

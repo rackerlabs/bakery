@@ -27,7 +27,9 @@ from bakery.models import (
     Ticket,
     TicketOperation,
 )
+from bakery.providers.types import ProviderExecutionContext, ProviderExecutionResult
 from bakery.operator_auth import AuthContext, require_operator, require_reader
+from bakery.reports import provider_analytics
 
 
 def _load_app(monkeypatch):
@@ -389,6 +391,29 @@ def test_report_filter_options_endpoint_returns_human_friendly_filter_data(
     assert payload["monitors"][1]["status"] == "unreachable"
 
 
+def test_provider_analytics_includes_configured_active_provider_without_activity() -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=engine)
+    session = sessionmaker(autocommit=False, autoflush=False, bind=engine)()
+    try:
+        payload = provider_analytics(session)
+        assert [row.provider_type for row in payload] == ["rackspace_core"]
+        assert payload[0].route_count == 0
+        assert payload[0].ticket_count == 0
+        assert payload[0].open_ticket_count == 0
+
+        assert provider_analytics(session, provider_type="servicenow") == []
+        filtered = provider_analytics(session, provider_type="rackspace_core")
+        assert [row.provider_type for row in filtered] == ["rackspace_core"]
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)
+
+
 def test_monitor_detail_endpoint_returns_recent_activity_and_latest_successes(
     client: TestClient,
 ) -> None:
@@ -573,18 +598,17 @@ def test_operator_ticket_close_closes_dry_run_ticket_and_removes_it_from_backlog
 def test_operator_ticket_find_resyncs_errored_provider_ticket(
     client: TestClient, monkeypatch
 ) -> None:
-    class _FakeMixer:
-        async def process_request(
-            self, action: str, payload: dict[str, object]
-        ) -> dict[str, object]:
-            assert action == "search"
-            assert payload["query"] == "number=INC00123"
-            return {
-                "success": True,
-                "data": {"results": [{"number": "INC00123", "state": "2"}]},
-            }
+    class _FakePlugin:
+        async def search(self, ctx: ProviderExecutionContext) -> ProviderExecutionResult:
+            assert ctx.action == "search"
+            assert ctx.normalized_payload is not None
+            assert ctx.normalized_payload["query"] == "number=INC00123"
+            return ProviderExecutionResult(
+                success=True,
+                data={"results": [{"number": "INC00123", "state": "2"}]},
+            )
 
-    monkeypatch.setattr(ticket_api, "get_mixer", lambda provider: _FakeMixer())
+    monkeypatch.setattr(ticket_api, "get_provider", lambda provider: _FakePlugin())
 
     response = client.post("/api/v1/operator/tickets/ticket-123/find")
 

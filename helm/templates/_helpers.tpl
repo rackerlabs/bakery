@@ -68,6 +68,14 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- upper (.Values.bakery.ui.gateway.listener.protocol | default "HTTPS") -}}
 {{- end -}}
 
+{{- define "bakery.uiApiProxyEnabled" -}}
+{{- $publicUrl := trimSuffix "/" (.Values.bakery.ui.publicUrl | default "") -}}
+{{- $apiBaseUrl := trimSuffix "/" (.Values.bakery.ui.apiBaseUrl | default "") -}}
+{{- if and .Values.bakery.ui.gateway.enabled $publicUrl $apiBaseUrl (eq $publicUrl $apiBaseUrl) -}}
+true
+{{- end -}}
+{{- end -}}
+
 {{- define "bakery.dbHost" -}}
 {{- $database := .Values.bakery.database | default dict -}}
 {{- $host := $database.host | default "" -}}

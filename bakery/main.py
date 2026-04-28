@@ -16,14 +16,16 @@ from bakery.config import settings
 from bakery.api.admin import router as admin_router
 from bakery.api.collection_jobs import router as collection_jobs_router
 from bakery.api.health import router as health_router
-from bakery.api.mixers import router as mixers_router
+from bakery.api.providers import router as providers_router
 from bakery.api.monitors import router as monitors_router
 from bakery.api.operator_auth import router as operator_auth_router
 from bakery.api.operator_tickets import router as operator_tickets_router
 from bakery.api.reports import router as reports_router
 from bakery.api.settings import router as settings_router
 from bakery.api.tickets import router as tickets_router
+from bakery.database import SessionLocal
 from bakery.metrics import render_metrics
+from bakery.providers.bootstrap import bootstrap_providers
 
 
 # Configure structured logging
@@ -67,6 +69,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         version=settings.app_version,
         environment=settings.environment,
     )
+    db = SessionLocal()
+    try:
+        result = await bootstrap_providers(db)
+        db.commit()
+        logger.info(
+            "Provider bootstrap complete",
+            provider_count=result["count"],
+            failures=result["failures"],
+            status=result["status"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        logger.error("Provider bootstrap failed", exc_info=exc)
+    finally:
+        db.close()
     yield
     logger.info("Bakery shutting down")
 
@@ -126,10 +143,10 @@ tags_metadata = [
         "description": "Operator-authenticated ticket inspection and backlog-management endpoints.",
     },
     {
-        "name": "mixers",
+        "name": "providers",
         "description": (
-            "Discover and validate ticketing system integrations. "
-            "Each mixer corresponds to an external ticketing system "
+            "Discover and health-check providers. "
+            "Each provider corresponds to an external ticketing or messaging system "
             "(ServiceNow, Jira, GitHub, PagerDuty, Rackspace Core)."
         ),
     },
@@ -209,7 +226,7 @@ app.include_router(reports_router, prefix=settings.api_prefix, tags=["reports"])
 app.include_router(collection_jobs_router, prefix=settings.api_prefix, tags=["collection-jobs"])
 app.include_router(communications_router, prefix=settings.api_prefix, tags=["communications"])
 app.include_router(tickets_router, prefix=settings.api_prefix, tags=["tickets"])
-app.include_router(mixers_router, prefix=settings.api_prefix, tags=["mixers"])
+app.include_router(providers_router, prefix=settings.api_prefix, tags=["providers"])
 
 
 @app.get("/metrics")

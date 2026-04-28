@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Rackspace Core mixer for ticket management via CTKAPI."""
+"""Rackspace Core provider for ticket management via CTKAPI."""
 
 import re
 from typing import Dict, Any, Optional, List
 import httpx
 
 from bakery.config import settings
-from bakery.mixer.base import BaseMixer
+from bakery.providers.base_provider import BaseProvider
+from bakery.providers.types import ProviderExecutionContext, ProviderExecutionResult
 
 
-class RackspaceCoreMixer(BaseMixer):
-    """
-    Mixer for Rackspace Core ticketing system.
+class RackspaceCoreProvider(BaseProvider):
+    """Provider for Rackspace Core ticketing system.
 
     Uses the CTKAPI query endpoint to interact with Core tickets.
     Authentication is token-based via /ctkapi/login/{user_id}.
@@ -19,13 +19,15 @@ class RackspaceCoreMixer(BaseMixer):
     using CTK object query sets.
     """
 
+    provider_type = "rackspace_core"
+
     def __init__(self) -> None:
-        """Initialize Rackspace Core mixer."""
+        """Initialize Rackspace Core provider."""
         super().__init__()
         self.base_url = settings.rackspace_core_url
         self.username = settings.rackspace_core_username
         self.password = settings.rackspace_core_password
-        self.timeout = settings.mixer_timeout_sec
+        self.timeout = settings.provider_timeout_sec
         self.verify_ssl = settings.rackspace_core_verify_ssl
         self._auth_token: Optional[str] = None
 
@@ -474,7 +476,7 @@ class RackspaceCoreMixer(BaseMixer):
             return None
         return queue_id, subcategory_id, source_id, severity_id
 
-    async def process_request(self, action: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, ctx: ProviderExecutionContext) -> ProviderExecutionResult:
         """
         Process Rackspace Core ticket request.
 
@@ -485,28 +487,35 @@ class RackspaceCoreMixer(BaseMixer):
         Returns:
             Response dictionary with success status and ticket details
         """
+        action = ctx.action
+        data = ctx.normalized_payload or self.normalize_payload(ctx)
         if not self.base_url or not self.username or not self.password:
-            return {
-                "success": False,
-                "error": "Rackspace Core credentials not configured",
-            }
+            return ProviderExecutionResult(
+                success=False,
+                error="Rackspace Core credentials not configured",
+                retryable=False,
+            )
 
         try:
             if action == "create":
-                return await self._create_ticket(data)
+                return self.provider_result(await self._create_ticket(data))
             elif action == "update":
-                return await self._update_ticket(data)
+                return self.provider_result(await self._update_ticket(data))
             elif action == "close":
-                return await self._close_ticket(data)
+                return self.provider_result(await self._close_ticket(data))
             elif action == "comment":
-                return await self._add_comment(data)
+                return self.provider_result(await self._add_comment(data))
             elif action == "search":
-                return await self._search_tickets(data)
+                return self.provider_result(await self._search_tickets(data))
             else:
-                return {"success": False, "error": f"Unknown action: {action}"}
+                return ProviderExecutionResult(
+                    success=False,
+                    error=f"Unknown action: {action}",
+                    retryable=False,
+                )
 
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return ProviderExecutionResult(success=False, error=str(e))
 
     # ── Authentication ──────────────────────────────────────────────
 
@@ -813,10 +822,16 @@ class RackspaceCoreMixer(BaseMixer):
             ]
             result = await self._execute_query(fallback_query_set)
 
+        normalized_state = status_value.strip().lower().replace(" ", "_")
+        if normalized_state == "confirm_solved":
+            normalized_state = "confirmed_solved"
         return {
             "success": True,
             "ticket_id": str(ticket_number),
-            "data": result,
+            "data": {
+                "state": normalized_state,
+                "result": result,
+            },
         }
 
     async def _add_comment(self, data: Dict[str, Any]) -> Dict[str, Any]:

@@ -22,6 +22,15 @@ spec:
     {{- end }}
     sectionName: {{ .Values.bakery.ui.gateway.listener.name }}
   rules:
+  {{- if eq (include "bakery.uiApiProxyEnabled" .) "true" }}
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /api
+    backendRefs:
+    - name: {{ include "bakery.fullname" . }}
+      port: {{ .Values.bakery.service.port }}
+  {{- end }}
   - matches:
     - path:
         type: PathPrefix

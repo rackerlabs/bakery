@@ -15,10 +15,11 @@ from sqlalchemy.orm import Session
 from bakery.auth import MonitorAuthContext, require_monitor_hmac_auth
 from bakery.config import settings
 from bakery.database import get_db
-from bakery.mixer.factory import get_mixer
 from bakery.metrics import BAKERY_OPERATIONS_TOTAL
 from bakery.monitoring import monitor_route_validation_required, validate_monitor_route_payload
 from bakery.models import IdempotencyKey, Ticket, TicketOperation
+from bakery.providers import get_provider
+from bakery.providers.types import ProviderExecutionContext
 from bakery.schemas import (
     OperationAcceptedResponse,
     TicketCloseRequest,
@@ -930,14 +931,23 @@ async def find_ticket_request(
             last_sync_operation=sync_op,
         )
 
-    provider = str(ticket.provider_type or settings.active_provider or "").strip().lower()
-    mixer = get_mixer(provider)
-    provider_response = await mixer.process_request("search", search_payload)
-    if not isinstance(provider_response, dict):
-        provider_response = {"success": False, "error": "Provider returned non-dict response"}
+    provider_type = str(ticket.provider_type or settings.active_provider or "").strip().lower()
+    provider = get_provider(provider_type)
+    provider_response = (
+        await provider.search(
+            ProviderExecutionContext(
+                provider_type=provider_type,
+                action="search",
+                internal_ticket_id=ticket.internal_ticket_id,
+                provider_ticket_id=ticket.provider_ticket_id,
+                request_payload=search_payload,
+                normalized_payload=search_payload,
+            )
+        )
+    ).as_provider_response()
 
     matched_ticket = _select_provider_ticket(
-        provider,
+        provider_type,
         ticket.provider_ticket_id,
         provider_response,
     )
@@ -962,7 +972,7 @@ async def find_ticket_request(
     )
     if is_success:
         ticket.state = _normalized_provider_ticket_state(
-            provider,
+            provider_type,
             matched_ticket,
             current_state=str(ticket.state or "").strip().lower(),
         )

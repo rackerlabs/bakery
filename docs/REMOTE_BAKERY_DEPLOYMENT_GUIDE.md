@@ -158,29 +158,32 @@ both `username` and `password` keys.
 
 ## Bootstrap Credential
 
-PoundCake’s monitor ID is auto-derived as `<namespace>/<release>`. Mint a bootstrap credential for
-that ID from Bakery’s admin API:
+PoundCake’s monitor ID is auto-derived as `<namespace>/<release>` unless `bakery.client.monitor.id`
+is set explicitly in the PoundCake overrides. Mint a bootstrap credential for that exact ID from the
+Bakery environment:
 
 ```bash
-export POUNDCAKE_MONITOR_ID="example-namespace/example-release"
-curl -fsS -X PUT "https://bakery.example.com/api/v1/admin/monitors/${POUNDCAKE_MONITOR_ID}/bootstrap-credential" \
-  -H "Authorization: HMAC <bakery-admin-key-id>:<signature>" \
-  -H "X-Timestamp: <unix-timestamp>"
+cd /opt/bakery
+./bin/create-monitor-bootstrap.sh \
+  --monitor-id iad3-flex \
+  --poundcake-namespace rackspace \
+  > bakery-monitor-bootstrap.yaml
 ```
 
-Store the returned `key_id` and `secret`. PoundCake uses them once to register and then rotates to
-its Bakery-issued per-monitor secret for all normal communication traffic and heartbeats.
+The helper creates or rotates a pending Bakery bootstrap credential and prints a Kubernetes Secret
+manifest for the PoundCake namespace. It does not create the registered monitor row yet. The monitor
+is registered only after PoundCake consumes this Secret and calls Bakery’s monitor registration API.
+
+The generated YAML is for the PoundCake cluster/namespace, not the Bakery namespace. If a bootstrap
+credential already exists, rerun with `--rotate` or confirm the interactive prompt, then update the
+PoundCake Secret before restarting PoundCake.
 
 ## PoundCake Side
 
-Create the PoundCake-side bootstrap secret in the PoundCake namespace:
+Apply the generated bootstrap Secret in the PoundCake namespace:
 
 ```bash
-kubectl -n example-namespace create secret generic bakery-monitor-bootstrap \
-  --from-literal=bootstrap-key-id="<bootstrap key_id from Bakery>" \
-  --from-literal=bootstrap-key="<bootstrap secret from Bakery>" \
-  --from-literal=monitor-encryption-key="$(openssl rand -base64 32)" \
-  --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f bakery-monitor-bootstrap.yaml
 ```
 
 Point PoundCake at remote Bakery in
@@ -203,6 +206,7 @@ Install PoundCake from the PoundCake repo root:
 ```bash
 cd /opt/poundcake
 ./install/install-poundcake-helm.sh
+kubectl -n rackspace rollout restart deploy/poundcake-api
 ```
 
 ## Verify Monitor Wiring

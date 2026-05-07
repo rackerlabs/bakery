@@ -66,6 +66,10 @@ print_section "Running repository hygiene checks"
 pre-commit run --all-files
 print_success "pre-commit checks passed"
 
+print_section "Running shell script tests"
+bash tests/test_create_monitor_bootstrap_script.sh
+print_success "Shell script tests passed"
+
 print_section "Running mypy"
 mypy bakery shared
 print_success "mypy passed"

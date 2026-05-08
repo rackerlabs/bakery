@@ -30,6 +30,8 @@ spec:
   resources:
     {{- toYaml .Values.mariadbOperator.server.resources | nindent 4 }}
 
+  {{- include "bakery.podPlacement" . | nindent 2 }}
+
   myCnf: |
     [mariadb]
     bind-address=*

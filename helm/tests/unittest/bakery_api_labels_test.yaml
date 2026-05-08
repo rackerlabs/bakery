@@ -24,10 +24,16 @@ tests:
           path: spec.template.spec.volumes[0].name
           value: tmp
 
-  - it: defaults bakery api pods to worker nodes
+  - it: defaults bakery api pods to control-plane nodes
     set:
       bakery.enabled: true
     asserts:
       - equal:
-          path: spec.template.spec.nodeSelector["node-role.kubernetes.io/worker"]
-          value: worker
+          path: spec.template.spec.nodeSelector["node-role.kubernetes.io/control-plane"]
+          value: ""
+      - equal:
+          path: spec.template.spec.tolerations[0].key
+          value: node-role.kubernetes.io/control-plane
+      - equal:
+          path: spec.template.spec.tolerations[0].operator
+          value: Exists

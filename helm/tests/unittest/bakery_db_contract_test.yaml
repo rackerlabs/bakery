@@ -79,6 +79,28 @@ tests:
         template: templates/bakery-mariadb.yaml
         documentIndex: 0
 
+  - it: applies global pod placement directly to the MariaDB resource
+    set:
+      bakery.enabled: true
+      bakery.database.createServer: true
+      mariadbOperator.enabled: true
+    asserts:
+      - equal:
+          path: spec.nodeSelector["node-role.kubernetes.io/control-plane"]
+          value: ""
+        template: templates/bakery-mariadb.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.tolerations[0].key
+          value: node-role.kubernetes.io/control-plane
+        template: templates/bakery-mariadb.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.tolerations[0].operator
+          value: Exists
+        template: templates/bakery-mariadb.yaml
+        documentIndex: 0
+
   - it: fails fast when bakery database createServer is disabled
     set:
       bakery.enabled: true
@@ -130,7 +152,7 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/example/bakery:0.1.22
+          value: ghcr.io/example/bakery:0.1.23
         template: templates/bakery-deployment.yaml
 
   - it: reports Bakery version from the deployed Bakery image tag

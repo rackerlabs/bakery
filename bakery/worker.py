@@ -293,11 +293,21 @@ def _claim_operations(batch_size: int) -> list[TicketOperation]:
         rows = (
             db.query(TicketOperation)
             .filter(
-                and_(
-                    TicketOperation.status.in_(["queued", "failed"]),
-                    or_(
-                        TicketOperation.next_attempt_at.is_(None),
-                        TicketOperation.next_attempt_at <= now,
+                or_(
+                    and_(
+                        TicketOperation.status == "queued",
+                        or_(
+                            TicketOperation.next_attempt_at.is_(None),
+                            TicketOperation.next_attempt_at <= now,
+                        ),
+                    ),
+                    and_(
+                        TicketOperation.status == "failed",
+                        TicketOperation.attempt_count < TicketOperation.max_attempts,
+                        or_(
+                            TicketOperation.next_attempt_at.is_(None),
+                            TicketOperation.next_attempt_at <= now,
+                        ),
                     ),
                 )
             )

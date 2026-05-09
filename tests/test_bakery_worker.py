@@ -1,8 +1,12 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from bakery.models import Monitor
-from bakery.worker import _monitor_threshold_deadline
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from bakery.models import Base, Monitor, TicketOperation
+from bakery.worker import _claim_operations, _monitor_threshold_deadline
 
 
 def _worker_source() -> str:
@@ -44,6 +48,77 @@ def test_rackspace_core_close_payload_defaults_to_confirm_solved() -> None:
 def test_worker_uses_renderer_layer_for_provider_payloads() -> None:
     source = _worker_source()
     assert "render_provider_content(provider, action, payload)" in source
+
+
+def test_claim_operations_skips_failed_rows_without_attempts_remaining(monkeypatch) -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=engine)
+    session_local = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    now = datetime.now(timezone.utc)
+
+    terminal_find = TicketOperation(
+        operation_id="terminal-find",
+        internal_ticket_id="ticket-1",
+        action="find",
+        status="failed",
+        request_payload={"ticket_id": "ticket-1"},
+        attempt_count=1,
+        max_attempts=1,
+        next_attempt_at=None,
+        created_at=now - timedelta(minutes=3),
+        updated_at=now - timedelta(minutes=3),
+    )
+    retryable_comment = TicketOperation(
+        operation_id="retryable-comment",
+        internal_ticket_id="ticket-2",
+        action="comment",
+        status="failed",
+        request_payload={"comment": "retry me"},
+        attempt_count=1,
+        max_attempts=5,
+        next_attempt_at=now - timedelta(seconds=1),
+        created_at=now - timedelta(minutes=2),
+        updated_at=now - timedelta(minutes=2),
+    )
+    queued_create = TicketOperation(
+        operation_id="queued-create",
+        internal_ticket_id="ticket-3",
+        action="create",
+        status="queued",
+        request_payload={"title": "queued work"},
+        attempt_count=0,
+        max_attempts=5,
+        next_attempt_at=None,
+        created_at=now - timedelta(minutes=1),
+        updated_at=now - timedelta(minutes=1),
+    )
+
+    with session_local() as db:
+        db.add_all([terminal_find, retryable_comment, queued_create])
+        db.commit()
+
+    monkeypatch.setattr("bakery.worker.SessionLocal", session_local)
+
+    claimed = _claim_operations(10)
+
+    assert {operation.operation_id for operation in claimed} == {
+        "retryable-comment",
+        "queued-create",
+    }
+    with session_local() as db:
+        statuses = {
+            operation.operation_id: operation.status
+            for operation in db.query(TicketOperation).all()
+        }
+    assert statuses == {
+        "terminal-find": "failed",
+        "retryable-comment": "running",
+        "queued-create": "running",
+    }
 
 
 def test_monitor_threshold_deadline_normalizes_naive_datetimes() -> None:

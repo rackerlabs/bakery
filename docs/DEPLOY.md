@@ -103,6 +103,50 @@ The auth secret may also include `next-key-id` and `next-key` during HMAC rotati
 secrets for ServiceNow, Jira, GitHub, PagerDuty, Teams, and Discord use the key names shown in
 `helm/values.yaml` under each provider's `secretKeys` block.
 
+## Recover Missing MariaDB Resources
+
+If a MariaDB operator update removes the Bakery MariaDB pod or the Bakery-owned MariaDB custom
+resources, repair the operator APIs first and then rerun the Bakery installer. The Bakery chart keeps
+the database resource names and password secrets stable, so a fresh Helm upgrade can recreate the
+`MariaDB`, `Database`, `User`, and `Grant` resources and let the operator reattach the existing PVC.
+
+This recovery path assumes the MariaDB PVC still exists. It restores Kubernetes control-plane objects
+and pod scheduling only; true PVC or data loss requires a separate database backup and restore.
+
+Check that the required MariaDB operator CRDs exist:
+
+```bash
+kubectl get crd \
+  mariadbs.k8s.mariadb.com \
+  databases.k8s.mariadb.com \
+  users.k8s.mariadb.com \
+  grants.k8s.mariadb.com
+```
+
+If any are missing, repair or reinstall the MariaDB operator CRD release before redeploying Bakery.
+For a Helm-managed operator CRD release, this usually looks like:
+
+```bash
+helm upgrade --install mariadb-operator-crds mariadb-operator/mariadb-operator-crds \
+  --namespace mariadb-system \
+  --create-namespace
+```
+
+Then rerun the canonical Bakery install/upgrade path:
+
+```bash
+./bin/install-bakery.sh --wait
+```
+
+Verify the recovered database and Bakery workloads:
+
+```bash
+kubectl -n bakery get mariadb,database,user,grant
+kubectl -n bakery get pods
+kubectl -n bakery run bakery-health-check --image=busybox:1.36 --restart=Never --rm -i -- \
+  wget -qO- http://bakery-poundcake-bakery:8000/api/v1/health
+```
+
 ## UI Install Modes
 
 The Bakery chart always deploys these three workloads together:

@@ -624,6 +624,7 @@ main() {
     --namespace "${NAMESPACE}"
     --create-namespace
     --set bakery.enabled=true
+    --set mariadbOperator.validateApis=true
     --set-string "bakery.config.activeProvider=${ACTIVE_PROVIDER}"
     --set-string "bakery.auth.existingSecret=${BAKERY_AUTH_SECRET_NAME}"
     --set-string "${provider_values_key}=${provider_secret_name}"

@@ -5,6 +5,24 @@
 {{- if not .Values.mariadbOperator.enabled }}
 {{- fail "bakery.database.createServer=true requires mariadbOperator.enabled=true" -}}
 {{- end }}
+{{- if .Values.mariadbOperator.validateApis }}
+{{- $missingMariaDbApis := list -}}
+{{- if not (.Capabilities.APIVersions.Has "k8s.mariadb.com/v1alpha1/MariaDB") }}
+{{- $missingMariaDbApis = append $missingMariaDbApis "MariaDB (k8s.mariadb.com/v1alpha1/MariaDB)" -}}
+{{- end }}
+{{- if not (.Capabilities.APIVersions.Has "k8s.mariadb.com/v1alpha1/Database") }}
+{{- $missingMariaDbApis = append $missingMariaDbApis "Database (k8s.mariadb.com/v1alpha1/Database)" -}}
+{{- end }}
+{{- if not (.Capabilities.APIVersions.Has "k8s.mariadb.com/v1alpha1/User") }}
+{{- $missingMariaDbApis = append $missingMariaDbApis "User (k8s.mariadb.com/v1alpha1/User)" -}}
+{{- end }}
+{{- if not (.Capabilities.APIVersions.Has "k8s.mariadb.com/v1alpha1/Grant") }}
+{{- $missingMariaDbApis = append $missingMariaDbApis "Grant (k8s.mariadb.com/v1alpha1/Grant)" -}}
+{{- end }}
+{{- if gt (len $missingMariaDbApis) 0 }}
+{{- fail (printf "mariadbOperator.validateApis=true requires MariaDB operator APIs before Bakery can create its database. Missing: %s. Install or repair the MariaDB operator CRDs, then rerun install-bakery.sh or helm upgrade --install." (join ", " $missingMariaDbApis)) -}}
+{{- end }}
+{{- end }}
 {{- if or .Values.bakery.rackspaceCore.url .Values.bakery.rackspaceCore.username .Values.bakery.rackspaceCore.password }}
 {{- fail "Rackspace Core direct values are disabled. Use bakery.rackspaceCore.existingSecret and install-bakery.sh secret provisioning." -}}
 {{- end }}

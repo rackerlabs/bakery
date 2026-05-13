@@ -46,6 +46,7 @@ images:
 
 mariadbOperator:
   enabled: true
+  validateApis: false
   namespace: ""
   server:
     rootPassword: ""

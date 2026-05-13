@@ -121,6 +121,48 @@ tests:
           errorMessage: "bakery.database.createServer=true requires mariadbOperator.enabled=true"
         template: templates/bakery-required.yaml
 
+  - it: keeps MariaDB API validation disabled by default for offline rendering
+    set:
+      bakery.enabled: true
+      bakery.database.createServer: true
+      mariadbOperator.enabled: true
+    capabilities:
+      apiVersions: []
+    asserts:
+      - hasDocuments:
+          count: 6
+        template: templates/bakery-mariadb.yaml
+
+  - it: fails fast when MariaDB API validation is enabled and CRDs are missing
+    set:
+      bakery.enabled: true
+      bakery.database.createServer: true
+      mariadbOperator.enabled: true
+      mariadbOperator.validateApis: true
+    capabilities:
+      apiVersions: []
+    asserts:
+      - failedTemplate:
+          errorMessage: "mariadbOperator.validateApis=true requires MariaDB operator APIs before Bakery can create its database. Missing: MariaDB (k8s.mariadb.com/v1alpha1/MariaDB), Database (k8s.mariadb.com/v1alpha1/Database), User (k8s.mariadb.com/v1alpha1/User), Grant (k8s.mariadb.com/v1alpha1/Grant). Install or repair the MariaDB operator CRDs, then rerun install-bakery.sh or helm upgrade --install."
+        template: templates/bakery-required.yaml
+
+  - it: allows MariaDB API validation when all required CRDs are available
+    set:
+      bakery.enabled: true
+      bakery.database.createServer: true
+      mariadbOperator.enabled: true
+      mariadbOperator.validateApis: true
+    capabilities:
+      apiVersions:
+        - k8s.mariadb.com/v1alpha1/MariaDB
+        - k8s.mariadb.com/v1alpha1/Database
+        - k8s.mariadb.com/v1alpha1/User
+        - k8s.mariadb.com/v1alpha1/Grant
+    asserts:
+      - hasDocuments:
+          count: 6
+        template: templates/bakery-mariadb.yaml
+
   - it: uses bakery image digest across api worker and init job
     set:
       bakery.enabled: true
@@ -152,7 +194,7 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/example/bakery:0.1.24
+          value: ghcr.io/example/bakery:0.1.25
         template: templates/bakery-deployment.yaml
 
   - it: reports Bakery version from the deployed Bakery image tag

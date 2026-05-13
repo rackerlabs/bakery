@@ -208,6 +208,7 @@ assert_contains "upgrade --install bakery" "${TMP_DIR}/helm.log"
 assert_contains "oci://ghcr.io/rackerlabs/charts/bakery" "${TMP_DIR}/helm.log"
 assert_contains "--namespace env-ns" "${TMP_DIR}/helm.log"
 assert_contains "--set bakery.enabled=true" "${TMP_DIR}/helm.log"
+assert_contains "--set mariadbOperator.validateApis=true" "${TMP_DIR}/helm.log"
 assert_contains "--set-string bakery.config.activeProvider=rackspace_core" "${TMP_DIR}/helm.log"
 assert_contains "--set-string bakery.auth.existingSecret=bakery-secret" "${TMP_DIR}/helm.log"
 assert_contains "--set-string bakery.rackspaceCore.existingSecret=bakery-rackspace-core" "${TMP_DIR}/helm.log"
@@ -295,5 +296,10 @@ if run_with_mocks "${MISSING_VERSION_OUT}" \
   fail "expected missing chart version file to fail"
 fi
 assert_contains "Chart version file not found at ${TMP_DIR}/missing-helm-chart-versions.yaml" "${MISSING_VERSION_OUT}"
+
+echo "Validating MariaDB recovery runbook is documented..."
+assert_contains "## Recover Missing MariaDB Resources" "${ROOT_DIR}/docs/DEPLOY.md"
+assert_contains "This recovery path assumes the MariaDB PVC still exists" "${ROOT_DIR}/docs/DEPLOY.md"
+assert_contains "./bin/install-bakery.sh --wait" "${ROOT_DIR}/docs/DEPLOY.md"
 
 echo "[PASS] Bakery install script regression checks passed"

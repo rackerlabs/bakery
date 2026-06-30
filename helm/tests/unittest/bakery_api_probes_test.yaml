@@ -1,0 +1,41 @@
+suite: bakery-api-probes
+templates:
+  - templates/bakery-deployment.yaml
+tests:
+  - it: defaults bakery api health probes to tolerant timeouts
+    set:
+      bakery.enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.timeoutSeconds
+          value: 10
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.failureThreshold
+          value: 5
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.timeoutSeconds
+          value: 10
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.failureThreshold
+          value: 5
+
+  - it: allows bakery api probe settings to be overridden
+    set:
+      bakery.enabled: true
+      bakery.probes.liveness.timeoutSeconds: 15
+      bakery.probes.liveness.failureThreshold: 6
+      bakery.probes.readiness.timeoutSeconds: 8
+      bakery.probes.readiness.failureThreshold: 4
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.timeoutSeconds
+          value: 15
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.failureThreshold
+          value: 6
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.timeoutSeconds
+          value: 8
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.failureThreshold
+          value: 4

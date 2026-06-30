@@ -164,6 +164,18 @@ bakery:
       cpu: 500m
       memory: 256Mi
 
+  probes:
+    liveness:
+      initialDelaySeconds: 30
+      periodSeconds: 30
+      timeoutSeconds: 10
+      failureThreshold: 5
+    readiness:
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 10
+      failureThreshold: 5
+
   config:
     environment: production
     logLevel: INFO

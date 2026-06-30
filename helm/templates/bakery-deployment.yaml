@@ -345,14 +345,18 @@ spec:
             httpGet:
               path: /api/v1/health
               port: http
-            initialDelaySeconds: 30
-            periodSeconds: 30
+            initialDelaySeconds: {{ .Values.bakery.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.bakery.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.bakery.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.bakery.probes.liveness.failureThreshold }}
           readinessProbe:
             httpGet:
               path: /api/v1/health
               port: http
-            initialDelaySeconds: 10
-            periodSeconds: 10
+            initialDelaySeconds: {{ .Values.bakery.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.bakery.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.bakery.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.bakery.probes.readiness.failureThreshold }}
           resources:
             {{- toYaml .Values.bakery.resources | nindent 12 }}
           volumeMounts:

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from bakery.auth import MonitorAuthContext, require_monitor_hmac_auth
 from bakery.config import settings
-from bakery.database import get_db
+from bakery.database import commit_with_record_changed_retry_async, get_db
 from bakery.mixer.factory import get_mixer
 from bakery.metrics import BAKERY_OPERATIONS_TOTAL
 from bakery.monitoring import monitor_route_validation_required, validate_monitor_route_payload
@@ -828,6 +828,45 @@ async def close_ticket(
     )
 
 
+def _commit_ticket_find_sync(
+    db: Session,
+    *,
+    ticket_id: str,
+    monitor_uuid: str | None,
+    request_payload: dict[str, Any],
+    normalized_payload: dict[str, Any],
+    provider_response: dict[str, Any],
+    status_value: str,
+    error_message: str | None,
+    provider: str | None = None,
+    matched_ticket: dict[str, Any] | None = None,
+    apply_provider_state: bool = False,
+) -> tuple[Ticket, TicketOperation]:
+    """Persist a find/sync result using a freshly loaded ticket row."""
+    ticket = _load_owned_ticket(db, ticket_id, monitor_uuid=monitor_uuid)
+    sync_op = _record_find_operation(
+        db,
+        ticket_id=ticket.internal_ticket_id,
+        status_value=status_value,
+        request_payload=request_payload,
+        normalized_payload=normalized_payload,
+        provider_response=provider_response,
+        last_error=error_message,
+    )
+    if apply_provider_state and provider is not None:
+        ticket.state = _normalized_provider_ticket_state(
+            provider,
+            matched_ticket,
+            current_state=str(ticket.state or "").strip().lower(),
+        )
+    ticket.latest_error = error_message
+    ticket.updated_at = _now()
+    db.commit()
+    db.refresh(ticket)
+    db.refresh(sync_op)
+    return ticket, sync_op
+
+
 async def get_ticket_request(
     ticket_id: str,
     *,
@@ -875,20 +914,19 @@ async def find_ticket_request(
                 "ticket": _build_local_ticket_data(ticket, operations),
             },
         }
-        sync_op = _record_find_operation(
+        ticket, sync_op = await commit_with_record_changed_retry_async(
             db,
-            ticket_id=ticket.internal_ticket_id,
-            status_value="succeeded",
-            request_payload=request_payload,
-            normalized_payload=request_payload,
-            provider_response=response_payload,
-            last_error=None,
+            lambda: _commit_ticket_find_sync(
+                db,
+                ticket_id=ticket_id,
+                monitor_uuid=monitor_uuid,
+                request_payload=request_payload,
+                normalized_payload=request_payload,
+                provider_response=response_payload,
+                status_value="succeeded",
+                error_message=None,
+            ),
         )
-        ticket.latest_error = None
-        ticket.updated_at = _now()
-        db.commit()
-        db.refresh(ticket)
-        db.refresh(sync_op)
         BAKERY_OPERATIONS_TOTAL.labels(action="find", status="succeeded").inc()
         operations = _load_ticket_operations(db, ticket_id, limit=500)
         return _ticket_response(
@@ -907,20 +945,19 @@ async def find_ticket_request(
             "error": error_message,
             "data": {"source": "local_cache"},
         }
-        sync_op = _record_find_operation(
+        ticket, sync_op = await commit_with_record_changed_retry_async(
             db,
-            ticket_id=ticket.internal_ticket_id,
-            status_value="failed",
-            request_payload=request_payload,
-            normalized_payload=request_payload,
-            provider_response=response_payload,
-            last_error=error_message,
+            lambda: _commit_ticket_find_sync(
+                db,
+                ticket_id=ticket_id,
+                monitor_uuid=monitor_uuid,
+                request_payload=request_payload,
+                normalized_payload=request_payload,
+                provider_response=response_payload,
+                status_value="failed",
+                error_message=error_message,
+            ),
         )
-        ticket.latest_error = error_message
-        ticket.updated_at = _now()
-        db.commit()
-        db.refresh(ticket)
-        db.refresh(sync_op)
         BAKERY_OPERATIONS_TOTAL.labels(action="find", status="failed").inc()
         operations = _load_ticket_operations(db, ticket_id, limit=500)
         return _ticket_response(
@@ -951,26 +988,22 @@ async def find_ticket_request(
     error_message = (
         None if is_success else str(provider_response.get("error") or "provider find failed")
     )
-    sync_op = _record_find_operation(
+    ticket, sync_op = await commit_with_record_changed_retry_async(
         db,
-        ticket_id=ticket.internal_ticket_id,
-        status_value=status_value,
-        request_payload=request_payload,
-        normalized_payload=search_payload,
-        provider_response=provider_response,
-        last_error=error_message,
+        lambda: _commit_ticket_find_sync(
+            db,
+            ticket_id=ticket_id,
+            monitor_uuid=monitor_uuid,
+            request_payload=request_payload,
+            normalized_payload=search_payload,
+            provider_response=provider_response,
+            status_value=status_value,
+            error_message=error_message,
+            provider=provider,
+            matched_ticket=matched_ticket,
+            apply_provider_state=is_success,
+        ),
     )
-    if is_success:
-        ticket.state = _normalized_provider_ticket_state(
-            provider,
-            matched_ticket,
-            current_state=str(ticket.state or "").strip().lower(),
-        )
-    ticket.latest_error = error_message
-    ticket.updated_at = _now()
-    db.commit()
-    db.refresh(ticket)
-    db.refresh(sync_op)
     BAKERY_OPERATIONS_TOTAL.labels(action="find", status=status_value).inc()
 
     operations = _load_ticket_operations(db, ticket_id, limit=500)

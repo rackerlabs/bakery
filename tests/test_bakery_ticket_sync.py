@@ -7,8 +7,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from sqlalchemy.exc import OperationalError
+
 from bakery.api import communications, tickets as ticket_api
-from bakery.database import Base
+from bakery.database import Base, RECORD_CHANGED_MYSQL_ERRNO
 from bakery.models import Ticket
 
 
@@ -142,3 +144,60 @@ async def test_sync_communication_maps_resolved_provider_state_to_closed(
     assert cached.state == "closed"
     assert ticket is not None
     assert ticket.state == "closed"
+
+
+@pytest.mark.asyncio
+async def test_find_ticket_request_retries_record_changed_on_commit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db = _db_session()
+    _seed_ticket(
+        db,
+        ticket_id="ticket-race-1",
+        provider_type="rackspace_core",
+        provider_ticket_id="260630-00001",
+    )
+
+    class _FakeMixer:
+        async def process_request(
+            self, action: str, payload: dict[str, object]
+        ) -> dict[str, object]:
+            assert action == "search"
+            return {
+                "success": True,
+                "data": {
+                    "results": [
+                        {
+                            "number": "260630-00001",
+                            "status.name": "Open",
+                        }
+                    ]
+                },
+            }
+
+    monkeypatch.setattr(ticket_api, "get_mixer", lambda provider: _FakeMixer())
+
+    commit_attempts = 0
+    original_commit = db.commit
+
+    def flaky_commit() -> None:
+        nonlocal commit_attempts
+        commit_attempts += 1
+        if commit_attempts == 1:
+            raise OperationalError(
+                "UPDATE tickets SET updated_at=%(updated_at)s WHERE tickets.id = %(tickets_id)s",
+                {},
+                Exception(
+                    RECORD_CHANGED_MYSQL_ERRNO,
+                    "Record has changed since last read in table 'tickets'",
+                ),
+            )
+        original_commit()
+
+    monkeypatch.setattr(db, "commit", flaky_commit)
+
+    response = await ticket_api.find_ticket_request("ticket-race-1", db=db, monitor_uuid=None)
+
+    assert commit_attempts == 2
+    assert response.data_source == "provider"
+    assert response.state == "open"

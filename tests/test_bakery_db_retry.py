@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import Session
 
 from bakery.database import (
     RECORD_CHANGED_MYSQL_ERRNO,
@@ -15,7 +14,9 @@ def _record_changed_operational_error() -> OperationalError:
     return OperationalError(
         "UPDATE tickets SET updated_at=%(updated_at)s WHERE tickets.id = %(tickets_id)s",
         {},
-        Exception(RECORD_CHANGED_MYSQL_ERRNO, "Record has changed since last read in table 'tickets'"),
+        Exception(
+            RECORD_CHANGED_MYSQL_ERRNO, "Record has changed since last read in table 'tickets'"
+        ),
     )
 
 

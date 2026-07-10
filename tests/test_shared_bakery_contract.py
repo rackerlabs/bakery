@@ -36,6 +36,18 @@ def test_communication_notify_request_coalesces_message_and_comment() -> None:
     assert payload.comment == "manual action required"
 
 
+def test_communication_notify_request_accepts_source_field() -> None:
+    payload = CommunicationNotifyRequest.model_validate(
+        {
+            "message": "PoundCake is closing this communication.",
+            "source": "poundcake",
+        }
+    )
+
+    assert payload.message == "PoundCake is closing this communication."
+    assert payload.source == "poundcake"
+
+
 def test_communication_open_request_accepts_managed_payload_fields() -> None:
     payload = CommunicationOpenRequest.model_validate(
         {

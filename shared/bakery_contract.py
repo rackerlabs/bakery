@@ -40,6 +40,7 @@ class CommunicationUpdateRequest(_BakeryContractModel):
 class CommunicationNotifyRequest(_BakeryContractModel):
     """Send a message/notification to an existing communication."""
 
+    source: str | None = Field(default=None, max_length=100)
     message: str | None = Field(default=None, min_length=1)
     comment: str | None = Field(default=None, min_length=1)
     visibility: str | None = Field(default=None, max_length=50)

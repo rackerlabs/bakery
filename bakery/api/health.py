@@ -3,30 +3,29 @@
 
 import os
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends
-from sqlalchemy import text
+from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
 from bakery.config import settings
-from bakery.database import get_db
 from bakery.schemas import HealthResponse, ComponentHealth
 
 router = APIRouter()
 
 
-def check_database(db: Session) -> ComponentHealth:
+def _check_database() -> ComponentHealth:
     """
     Check database connectivity.
-
-    Args:
-        db: Database session
 
     Returns:
         ComponentHealth with status
     """
+    from sqlalchemy import text
+
+    from bakery.database import engine
+
     try:
-        # Simple query to verify database is accessible
-        db.execute(text("SELECT 1"))
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
         return ComponentHealth(status="healthy", message="Database accessible")
     except Exception as e:
         return ComponentHealth(
@@ -45,14 +44,12 @@ def check_database(db: Session) -> ComponentHealth:
         "Used by Kubernetes liveness and readiness probes."
     ),
 )
-async def health_check(db: Session = Depends(get_db)) -> HealthResponse:
+def health_check() -> HealthResponse:
     """Health check endpoint."""
     components: dict[str, ComponentHealth] = {}
 
-    # Check database
-    components["database"] = check_database(db)
+    components["database"] = _check_database()
 
-    # Determine overall status
     component_statuses = [comp.status for comp in components.values()]
     if all(status == "healthy" for status in component_statuses):
         overall_status = "healthy"

@@ -167,14 +167,14 @@ bakery:
   probes:
     liveness:
       initialDelaySeconds: 30
-      periodSeconds: 30
-      timeoutSeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
       failureThreshold: 5
     readiness:
       initialDelaySeconds: 10
-      periodSeconds: 10
-      timeoutSeconds: 10
-      failureThreshold: 5
+      periodSeconds: 5
+      timeoutSeconds: 5
+      failureThreshold: 3
 
   config:
     environment: production
@@ -185,6 +185,9 @@ bakery:
     maxMessagesPerPoll: 100
     mixerTimeoutSec: 30
     mixerMaxRetries: 3
+    databasePoolSize: 20
+    databasePoolMaxOverflow: 10
+    databasePoolTimeout: 5
 
   auth:
     enabled: true
@@ -335,4 +338,4 @@ bakery:
       password: ""
       passwordSecret: ""
       passwordSecretKey: "password"
-      maxUserConnections: 20
+      maxUserConnections: 150

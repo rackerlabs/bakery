@@ -8,16 +8,16 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].livenessProbe.timeoutSeconds
-          value: 10
+          value: 5
       - equal:
           path: spec.template.spec.containers[0].livenessProbe.failureThreshold
           value: 5
       - equal:
           path: spec.template.spec.containers[0].readinessProbe.timeoutSeconds
-          value: 10
+          value: 5
       - equal:
           path: spec.template.spec.containers[0].readinessProbe.failureThreshold
-          value: 5
+          value: 3
 
   - it: allows bakery api probe settings to be overridden
     set:

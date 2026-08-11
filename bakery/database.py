@@ -22,6 +22,9 @@ engine = create_engine(
     settings.database_url,
     pool_pre_ping=True,
     pool_recycle=3600,
+    pool_size=settings.database_pool_size,
+    max_overflow=settings.database_pool_max_overflow,
+    pool_timeout=settings.database_pool_timeout,
     echo=settings.environment == "development",
 )
 

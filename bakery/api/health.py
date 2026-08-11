@@ -4,7 +4,6 @@
 import os
 from datetime import datetime, timezone
 from fastapi import APIRouter
-from sqlalchemy.orm import Session
 
 from bakery.config import settings
 from bakery.schemas import HealthResponse, ComponentHealth

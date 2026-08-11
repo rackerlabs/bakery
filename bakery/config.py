@@ -49,9 +49,7 @@ class Settings:
         self.database_password: str = os.getenv("DATABASE_PASSWORD", "")
         self.database_name: str = os.getenv("DATABASE_NAME", "bakery")
         self.database_pool_size: int = int(os.getenv("DATABASE_POOL_SIZE", "20"))
-        self.database_pool_max_overflow: int = int(
-            os.getenv("DATABASE_POOL_MAX_OVERFLOW", "10")
-        )
+        self.database_pool_max_overflow: int = int(os.getenv("DATABASE_POOL_MAX_OVERFLOW", "10"))
         self.database_pool_timeout: int = int(os.getenv("DATABASE_POOL_TIMEOUT", "5"))
 
         # Message queue settings

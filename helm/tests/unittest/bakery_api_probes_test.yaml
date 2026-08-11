@@ -8,13 +8,13 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].livenessProbe.timeoutSeconds
-          value: 5
+          value: 10
       - equal:
           path: spec.template.spec.containers[0].livenessProbe.failureThreshold
           value: 5
       - equal:
           path: spec.template.spec.containers[0].readinessProbe.timeoutSeconds
-          value: 5
+          value: 10
       - equal:
           path: spec.template.spec.containers[0].readinessProbe.failureThreshold
           value: 3

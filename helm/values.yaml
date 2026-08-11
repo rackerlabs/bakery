@@ -168,12 +168,12 @@ bakery:
     liveness:
       initialDelaySeconds: 30
       periodSeconds: 10
-      timeoutSeconds: 5
+      timeoutSeconds: 10
       failureThreshold: 5
     readiness:
       initialDelaySeconds: 10
       periodSeconds: 5
-      timeoutSeconds: 5
+      timeoutSeconds: 10
       failureThreshold: 3
 
   config:
@@ -185,9 +185,9 @@ bakery:
     maxMessagesPerPoll: 100
     mixerTimeoutSec: 30
     mixerMaxRetries: 3
-    databasePoolSize: 20
-    databasePoolMaxOverflow: 10
-    databasePoolTimeout: 15
+    databasePoolSize: 40
+    databasePoolMaxOverflow: 20
+    databasePoolTimeout: 30
 
   auth:
     enabled: true

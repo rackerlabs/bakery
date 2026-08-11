@@ -330,149 +330,131 @@ def _claim_operations(batch_size: int) -> list[TicketOperation]:
         return rows
 
 
-def _load_ticket(internal_ticket_id: str) -> Ticket:
-    with SessionLocal() as db:
-        ticket = db.query(Ticket).filter(Ticket.internal_ticket_id == internal_ticket_id).first()
-        if not ticket:
-            raise ValueError("Ticket does not exist")
-        db.expunge(ticket)
-        return ticket
+def _load_ticket(db, internal_ticket_id: str) -> Ticket:
+    ticket = db.query(Ticket).filter(Ticket.internal_ticket_id == internal_ticket_id).first()
+    if not ticket:
+        raise ValueError("Ticket does not exist")
+    return ticket
 
 
-def _persist_success(operation_id: str, result: dict[str, Any]) -> None:
+def _persist_success(db, operation_id: str, result: dict[str, Any]) -> None:
     now = _now()
-    with SessionLocal() as db:
-        operation = (
-            db.query(TicketOperation).filter(TicketOperation.operation_id == operation_id).first()
-        )
-        if not operation:
-            return
-        ticket = (
-            db.query(Ticket)
-            .filter(Ticket.internal_ticket_id == operation.internal_ticket_id)
-            .first()
-        )
-        if not ticket:
-            return
+    operation = (
+        db.query(TicketOperation).filter(TicketOperation.operation_id == operation_id).first()
+    )
+    if not operation:
+        return
+    ticket = (
+        db.query(Ticket).filter(Ticket.internal_ticket_id == operation.internal_ticket_id).first()
+    )
+    if not ticket:
+        return
 
-        operation.status = "succeeded"
-        operation.provider_response = result
-        operation.last_error = None
-        operation.completed_at = now
-        operation.updated_at = now
+    operation.status = "succeeded"
+    operation.provider_response = result
+    operation.last_error = None
+    operation.completed_at = now
+    operation.updated_at = now
 
-        external_ticket_id = result.get("ticket_id")
-        if operation.action == "create" and external_ticket_id:
-            ticket.provider_ticket_id = str(external_ticket_id)
-            ticket.state = "open"
-        elif operation.action == "close":
-            if (ticket.provider_type or settings.active_provider) == "rackspace_core":
-                normalized_payload = operation.normalized_payload or {}
-                requested_state = str(
-                    normalized_payload.get("status")
-                    or normalized_payload.get("state")
-                    or (operation.request_payload or {}).get("state")
-                    or ""
-                ).lower()
-                if requested_state.replace(" ", "_") == "confirmed_solved":
-                    ticket.state = "confirmed_solved"
-                else:
-                    ticket.state = "closed"
+    external_ticket_id = result.get("ticket_id")
+    if operation.action == "create" and external_ticket_id:
+        ticket.provider_ticket_id = str(external_ticket_id)
+        ticket.state = "open"
+    elif operation.action == "close":
+        if (ticket.provider_type or settings.active_provider) == "rackspace_core":
+            normalized_payload = operation.normalized_payload or {}
+            requested_state = str(
+                normalized_payload.get("status")
+                or normalized_payload.get("state")
+                or (operation.request_payload or {}).get("state")
+                or ""
+            ).lower()
+            if requested_state.replace(" ", "_") == "confirmed_solved":
+                ticket.state = "confirmed_solved"
             else:
                 ticket.state = "closed"
-        elif operation.action == "update":
-            ticket.state = "updating"
-        elif operation.action == "comment":
-            ticket.state = "open"
-        ticket.latest_error = None
-        ticket.updated_at = now
-        BAKERY_OPERATIONS_TOTAL.labels(action=operation.action, status="succeeded").inc()
-        db.commit()
-
-
-def _persist_normalized_payload(operation_id: str, payload: dict[str, Any]) -> None:
-    now = _now()
-    with SessionLocal() as db:
-        operation = (
-            db.query(TicketOperation).filter(TicketOperation.operation_id == operation_id).first()
-        )
-        if not operation:
-            return
-        operation.normalized_payload = payload
-        operation.updated_at = now
-        db.commit()
-
-
-def _persist_failure(operation_id: str, error: str) -> None:
-    now = _now()
-    with SessionLocal() as db:
-        operation = (
-            db.query(TicketOperation).filter(TicketOperation.operation_id == operation_id).first()
-        )
-        if not operation:
-            return
-        ticket = (
-            db.query(Ticket)
-            .filter(Ticket.internal_ticket_id == operation.internal_ticket_id)
-            .first()
-        )
-        if not ticket:
-            return
-
-        operation.attempt_count += 1
-        operation.last_error = error
-        operation.updated_at = now
-
-        if operation.attempt_count >= operation.max_attempts:
-            operation.status = "dead_letter"
-            operation.completed_at = now
-            operation.next_attempt_at = None
-            ticket.state = "error"
-            BAKERY_DEAD_LETTER_TOTAL.labels(action=operation.action).inc()
-            BAKERY_OPERATIONS_TOTAL.labels(action=operation.action, status="dead_letter").inc()
         else:
-            operation.status = "failed"
-            delay = _compute_backoff(operation.attempt_count)
-            operation.next_attempt_at = now + timedelta(seconds=delay)
-            ticket.state = "error"
-            BAKERY_RETRIES_TOTAL.labels(action=operation.action).inc()
-            BAKERY_OPERATIONS_TOTAL.labels(action=operation.action, status="failed").inc()
-
-        ticket.latest_error = error
-        ticket.updated_at = now
-        db.commit()
+            ticket.state = "closed"
+    elif operation.action == "update":
+        ticket.state = "updating"
+    elif operation.action == "comment":
+        ticket.state = "open"
+    ticket.latest_error = None
+    ticket.updated_at = now
+    BAKERY_OPERATIONS_TOTAL.labels(action=operation.action, status="succeeded").inc()
 
 
-def _persist_non_retryable_failure(operation_id: str, error: str) -> None:
+def _persist_normalized_payload(db, operation_id: str, payload: dict[str, Any]) -> None:
+    operation = (
+        db.query(TicketOperation).filter(TicketOperation.operation_id == operation_id).first()
+    )
+    if not operation:
+        return
+    operation.normalized_payload = payload
+
+
+def _persist_failure(db, operation_id: str, error: str) -> None:
     now = _now()
-    with SessionLocal() as db:
-        operation = (
-            db.query(TicketOperation).filter(TicketOperation.operation_id == operation_id).first()
-        )
-        if not operation:
-            return
-        ticket = (
-            db.query(Ticket)
-            .filter(Ticket.internal_ticket_id == operation.internal_ticket_id)
-            .first()
-        )
-        if not ticket:
-            return
+    operation = (
+        db.query(TicketOperation).filter(TicketOperation.operation_id == operation_id).first()
+    )
+    if not operation:
+        return
+    ticket = (
+        db.query(Ticket).filter(Ticket.internal_ticket_id == operation.internal_ticket_id).first()
+    )
+    if not ticket:
+        return
 
+    operation.attempt_count += 1
+    operation.last_error = error
+    operation.updated_at = now
+
+    if operation.attempt_count >= operation.max_attempts:
         operation.status = "dead_letter"
-        operation.attempt_count = operation.max_attempts
-        operation.last_error = error
-        operation.next_attempt_at = None
         operation.completed_at = now
-        operation.updated_at = now
-
+        operation.next_attempt_at = None
         ticket.state = "error"
-        ticket.latest_error = error
-        ticket.updated_at = now
-
         BAKERY_DEAD_LETTER_TOTAL.labels(action=operation.action).inc()
         BAKERY_OPERATIONS_TOTAL.labels(action=operation.action, status="dead_letter").inc()
-        db.commit()
+    else:
+        operation.status = "failed"
+        delay = _compute_backoff(operation.attempt_count)
+        operation.next_attempt_at = now + timedelta(seconds=delay)
+        ticket.state = "error"
+        BAKERY_RETRIES_TOTAL.labels(action=operation.action).inc()
+        BAKERY_OPERATIONS_TOTAL.labels(action=operation.action, status="failed").inc()
+
+    ticket.latest_error = error
+    ticket.updated_at = now
+
+
+def _persist_non_retryable_failure(db, operation_id: str, error: str) -> None:
+    now = _now()
+    operation = (
+        db.query(TicketOperation).filter(TicketOperation.operation_id == operation_id).first()
+    )
+    if not operation:
+        return
+    ticket = (
+        db.query(Ticket).filter(Ticket.internal_ticket_id == operation.internal_ticket_id).first()
+    )
+    if not ticket:
+        return
+
+    operation.status = "dead_letter"
+    operation.attempt_count = operation.max_attempts
+    operation.last_error = error
+    operation.next_attempt_at = None
+    operation.completed_at = now
+    operation.updated_at = now
+
+    ticket.state = "error"
+    ticket.latest_error = error
+    ticket.updated_at = now
+
+    BAKERY_DEAD_LETTER_TOTAL.labels(action=operation.action).inc()
+    BAKERY_OPERATIONS_TOTAL.labels(action=operation.action, status="dead_letter").inc()
 
 
 def _build_dry_run_result(
@@ -604,170 +586,185 @@ def _current_ticket(db, ticket_id: str | None) -> Ticket | None:
     return db.query(Ticket).filter(Ticket.internal_ticket_id == ticket_id).first()
 
 
-def _handle_monitor_unreachable_transition(monitor: Monitor) -> None:
+def _handle_monitor_unreachable_transition(db, monitor: Monitor) -> None:
     now = _now()
-    with SessionLocal() as db:
-        db_monitor = db.query(Monitor).filter(Monitor.monitor_uuid == monitor.monitor_uuid).first()
-        if db_monitor is None:
-            return
-        routes = get_outage_enabled_routes(db, monitor_uuid=db_monitor.monitor_uuid)
-        for route in routes:
-            state = _ensure_route_state(db, monitor_uuid=db_monitor.monitor_uuid, route=route)
-            ticket = _current_ticket(db, state.ticket_id)
-            if ticket is None or _ticket_is_closed(ticket):
-                accepted = asyncio.run(
-                    create_ticket_request(
-                        _outage_open_payload(db_monitor, route),
-                        idempotency_key=_idempotency_key(
-                            "monitor",
-                            db_monitor.monitor_uuid,
-                            route.scope,
-                            route.owner_key,
-                            route.route_id,
-                            "open",
-                            now.isoformat(),
-                        ),
-                        db=db,
-                        monitor_uuid=db_monitor.monitor_uuid,
-                        validate_route=False,
-                    )
-                )
-                state.ticket_id = accepted.ticket_id
-            else:
-                _enqueue_ticket_action_request(
-                    db,
-                    ticket.internal_ticket_id,
-                    "comment",
-                    _outage_comment_payload(db_monitor, recovered=False).model_dump(),
-                    _idempotency_key(
+    routes = get_outage_enabled_routes(db, monitor_uuid=monitor.monitor_uuid)
+    for route in routes:
+        state = _ensure_route_state(db, monitor_uuid=monitor.monitor_uuid, route=route)
+        ticket = _current_ticket(db, state.ticket_id)
+        if ticket is None or _ticket_is_closed(ticket):
+            accepted = asyncio.run(
+                create_ticket_request(
+                    _outage_open_payload(monitor, route),
+                    idempotency_key=_idempotency_key(
                         "monitor",
-                        db_monitor.monitor_uuid,
+                        monitor.monitor_uuid,
                         route.scope,
                         route.owner_key,
                         route.route_id,
-                        "down-comment",
+                        "open",
                         now.isoformat(),
                     ),
-                    monitor_uuid=db_monitor.monitor_uuid,
+                    db=db,
+                    monitor_uuid=monitor.monitor_uuid,
                     validate_route=False,
                 )
-            state.last_state = "unreachable"
-            state.updated_at = now
-
-        db_monitor.status = "unreachable"
-        db_monitor.unreachable_at = now
-        db_monitor.updated_at = now
-        record_monitor_event(
-            db,
-            monitor_uuid=db_monitor.monitor_uuid,
-            event_type="unreachable",
-            payload={"monitor_id": db_monitor.monitor_id, "route_count": len(routes)},
-        )
-        db.commit()
-
-
-def _handle_monitor_recovery_transition(monitor: Monitor) -> None:
-    now = _now()
-    with SessionLocal() as db:
-        db_monitor = db.query(Monitor).filter(Monitor.monitor_uuid == monitor.monitor_uuid).first()
-        if db_monitor is None:
-            return
-        states = (
-            db.query(MonitorOutageRouteState)
-            .filter(MonitorOutageRouteState.monitor_uuid == db_monitor.monitor_uuid)
-            .all()
-        )
-        for state in states:
-            ticket = _current_ticket(db, state.ticket_id)
-            if ticket is None:
-                state.last_state = "healthy"
-                state.updated_at = now
-                continue
+            )
+            state.ticket_id = accepted.ticket_id
+        else:
             _enqueue_ticket_action_request(
                 db,
                 ticket.internal_ticket_id,
                 "comment",
-                _outage_comment_payload(db_monitor, recovered=True).model_dump(),
+                _outage_comment_payload(monitor, recovered=False).model_dump(),
                 _idempotency_key(
                     "monitor",
-                    db_monitor.monitor_uuid,
-                    state.scope,
-                    state.owner_key,
-                    state.route_id,
-                    "recovery-comment",
+                    monitor.monitor_uuid,
+                    route.scope,
+                    route.owner_key,
+                    route.route_id,
+                    "down-comment",
                     now.isoformat(),
                 ),
-                monitor_uuid=db_monitor.monitor_uuid,
+                monitor_uuid=monitor.monitor_uuid,
                 validate_route=False,
             )
+        state.last_state = "unreachable"
+        state.updated_at = now
+
+    monitor.status = "unreachable"
+    monitor.unreachable_at = now
+    monitor.updated_at = now
+    record_monitor_event(
+        db,
+        monitor_uuid=monitor.monitor_uuid,
+        event_type="unreachable",
+        payload={"monitor_id": monitor.monitor_id, "route_count": len(routes)},
+    )
+    db.commit()
+
+
+def _handle_monitor_recovery_transition(db, monitor: Monitor) -> None:
+    now = _now()
+    states = (
+        db.query(MonitorOutageRouteState)
+        .filter(MonitorOutageRouteState.monitor_uuid == monitor.monitor_uuid)
+        .all()
+    )
+    for state in states:
+        ticket = _current_ticket(db, state.ticket_id)
+        if ticket is None:
             state.last_state = "healthy"
             state.updated_at = now
-
-        db_monitor.status = "healthy"
-        db_monitor.unreachable_at = None
-        db_monitor.updated_at = now
-        record_monitor_event(
+            continue
+        _enqueue_ticket_action_request(
             db,
-            monitor_uuid=db_monitor.monitor_uuid,
-            event_type="recovered",
-            payload={"monitor_id": db_monitor.monitor_id, "state_count": len(states)},
+            ticket.internal_ticket_id,
+            "comment",
+            _outage_comment_payload(monitor, recovered=True).model_dump(),
+            _idempotency_key(
+                "monitor",
+                monitor.monitor_uuid,
+                state.scope,
+                state.owner_key,
+                state.route_id,
+                "recovery-comment",
+                now.isoformat(),
+            ),
+            monitor_uuid=monitor.monitor_uuid,
+            validate_route=False,
         )
-        db.commit()
+        state.last_state = "healthy"
+        state.updated_at = now
+
+    monitor.status = "healthy"
+    monitor.unreachable_at = None
+    monitor.updated_at = now
+    record_monitor_event(
+        db,
+        monitor_uuid=monitor.monitor_uuid,
+        event_type="recovered",
+        payload={"monitor_id": monitor.monitor_id, "state_count": len(states)},
+    )
+    db.commit()
 
 
 def _run_monitor_sweep() -> None:
     now = _now()
     with SessionLocal() as db:
-        monitors = db.query(Monitor).all()
-        for monitor in monitors:
-            overdue = _monitor_threshold_deadline(monitor) <= now
-            if overdue and monitor.status != "unreachable":
-                db.expunge(monitor)
-                _handle_monitor_unreachable_transition(monitor)
+        candidates = db.query(
+            Monitor.monitor_uuid,
+            Monitor.status,
+            Monitor.last_checkin_at,
+            Monitor.created_at,
+            Monitor.monitor_id,
+        ).all()
+
+    for monitor_uuid, status, last_checkin_at, created_at, monitor_id in candidates:
+        baseline = _as_utc(last_checkin_at or created_at)
+        overdue = (
+            baseline
+            + timedelta(
+                seconds=settings.bakery_monitor_heartbeat_interval_sec
+                * settings.bakery_monitor_miss_threshold
+            )
+            <= now
+        )
+
+        with SessionLocal() as db:
+            monitor = db.query(Monitor).filter(Monitor.monitor_uuid == monitor_uuid).first()
+            if not monitor:
                 continue
-            if not overdue and monitor.status == "unreachable":
-                db.expunge(monitor)
-                _handle_monitor_recovery_transition(monitor)
+            if overdue and monitor.status != "unreachable":
+                _handle_monitor_unreachable_transition(db, monitor)
+            elif not overdue and monitor.status == "unreachable":
+                _handle_monitor_recovery_transition(db, monitor)
 
 
 def _process_operation(operation: TicketOperation) -> None:
     started = time.monotonic()
-    ticket = _load_ticket(operation.internal_ticket_id)
-    provider = str(ticket.provider_type or settings.active_provider or "").strip().lower()
-    payload = _build_provider_payload(operation.action, ticket, operation.request_payload)
-    _persist_normalized_payload(operation.operation_id, payload)
-    missing = _preflight_missing_fields(provider, operation.action, payload)
-    if missing:
-        error = f"{provider} {operation.action} missing required fields: " + ", ".join(missing)
-        logger.error(
-            "Provider preflight validation failed",
-            operation_id=operation.operation_id,
-            ticket_id=operation.internal_ticket_id,
-            provider=provider,
-            action=operation.action,
-            missing_fields=missing,
-        )
-        _persist_non_retryable_failure(operation.operation_id, error)
-        return
+    with SessionLocal() as db:
+        ticket = _load_ticket(db, operation.internal_ticket_id)
+        provider = str(ticket.provider_type or settings.active_provider or "").strip().lower()
+        payload = _build_provider_payload(operation.action, ticket, operation.request_payload)
+        _persist_normalized_payload(db, operation.operation_id, payload)
+        db.commit()
+        missing = _preflight_missing_fields(provider, operation.action, payload)
+        if missing:
+            error = f"{provider} {operation.action} missing required fields: " + ", ".join(missing)
+            logger.error(
+                "Provider preflight validation failed",
+                operation_id=operation.operation_id,
+                ticket_id=operation.internal_ticket_id,
+                provider=provider,
+                action=operation.action,
+                missing_fields=missing,
+            )
+            _persist_non_retryable_failure(db, operation.operation_id, error)
+            db.commit()
+            return
 
-    if settings.ticketing_dry_run:
-        logger.info(
-            "Dry-run enabled; skipping provider call",
-            operation_id=operation.operation_id,
-            action=operation.action,
-            provider=provider,
+        if settings.ticketing_dry_run:
+            logger.info(
+                "Dry-run enabled; skipping provider call",
+                operation_id=operation.operation_id,
+                action=operation.action,
+                provider=provider,
+            )
+            result = _build_dry_run_result(operation, ticket, payload)
+        else:
+            mixer = get_mixer(provider)
+            result = asyncio.run(mixer.process_request(operation.action, payload))
+        BAKERY_OPERATION_LATENCY_SECONDS.labels(action=operation.action).observe(
+            max(time.monotonic() - started, 0.0)
         )
-        result = _build_dry_run_result(operation, ticket, payload)
-    else:
-        mixer = get_mixer(provider)
-        result = asyncio.run(mixer.process_request(operation.action, payload))
-    BAKERY_OPERATION_LATENCY_SECONDS.labels(action=operation.action).observe(
-        max(time.monotonic() - started, 0.0)
-    )
-    if result.get("success"):
-        _persist_success(operation.operation_id, result)
-        return
-    _persist_failure(operation.operation_id, str(result.get("error") or "provider request failed"))
+        if result.get("success"):
+            _persist_success(db, operation.operation_id, result)
+        else:
+            _persist_failure(
+                db, operation.operation_id, str(result.get("error") or "provider request failed")
+            )
+        db.commit()
 
 
 def run_worker() -> None:
@@ -814,7 +811,9 @@ def run_worker() -> None:
                     operation_id=operation.operation_id,
                     error=str(exc),
                 )
-                _persist_failure(operation.operation_id, str(exc))
+                with SessionLocal() as db:
+                    _persist_failure(db, operation.operation_id, str(exc))
+                    db.commit()
 
 
 if __name__ == "__main__":

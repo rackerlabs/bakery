@@ -3,6 +3,7 @@
 
 import os
 from datetime import datetime, timezone
+from typing import cast
 from fastapi import APIRouter
 
 from bakery.config import settings
@@ -19,10 +20,12 @@ def _check_database() -> ComponentHealth:
     ensuring the probe never competes with application traffic for
     scarce DB connections.
     """
+    from sqlalchemy.pool import QueuePool
+
     from bakery.database import engine
 
     try:
-        pool = engine.pool
+        pool = cast("QueuePool", engine.pool)
         checked_in = pool.checkedin()
         checked_out = pool.checkedout()
         overflow = pool.overflow()

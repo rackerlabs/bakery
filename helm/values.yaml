@@ -187,7 +187,7 @@ bakery:
     mixerMaxRetries: 3
     databasePoolSize: 20
     databasePoolMaxOverflow: 10
-    databasePoolTimeout: 5
+    databasePoolTimeout: 15
 
   auth:
     enabled: true

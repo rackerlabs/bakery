@@ -13,23 +13,34 @@ router = APIRouter()
 
 def _check_database() -> ComponentHealth:
     """
-    Check database connectivity.
+    Check database pool health without consuming pool connections.
 
-    Returns:
-        ComponentHealth with status
+    Uses pool-level introspection instead of opening a connection,
+    ensuring the probe never competes with application traffic for
+    scarce DB connections.
     """
-    from sqlalchemy import text
-
     from bakery.database import engine
 
     try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        return ComponentHealth(status="healthy", message="Database accessible")
+        pool = engine.pool
+        checked_in = pool.checkedin()
+        checked_out = pool.checkedout()
+        overflow = pool.overflow()
+        total = checked_in + checked_out
+        return ComponentHealth(
+            status="healthy",
+            message="Database pool operational",
+            details={
+                "checked_in": checked_in,
+                "checked_out": checked_out,
+                "overflow": overflow,
+                "total": total,
+            },
+        )
     except Exception as e:
         return ComponentHealth(
             status="unhealthy",
-            message="Database connection failed",
+            message="Database pool check failed",
             details={"error": str(e)},
         )
 

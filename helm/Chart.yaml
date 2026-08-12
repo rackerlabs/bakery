@@ -2,8 +2,8 @@ apiVersion: v2
 name: bakery
 description: Standalone communication integration service for external ticketing and messaging systems
 type: application
-version: 0.1.31
-appVersion: "0.1.31"
+version: 0.1.32
+appVersion: "0.1.32"
 maintainers:
   - name: Jake Briggs
 keywords:

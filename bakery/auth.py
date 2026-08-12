@@ -78,6 +78,7 @@ async def _validate_signed_request(
     x_timestamp: str | None,
     expected_key_id: str,
     shared_secret: str,
+    body: bytes | None = None,
 ) -> str:
     if not x_timestamp:
         raise HTTPException(
@@ -92,7 +93,8 @@ async def _validate_signed_request(
             detail="Unknown key id",
         )
 
-    body = await request.body()
+    if body is None:
+        body = await request.body()
     payload = build_hmac_signing_payload(
         timestamp=x_timestamp,
         method=request.method,
@@ -224,6 +226,7 @@ async def require_bootstrap_hmac_auth(
         x_timestamp=x_timestamp,
         expected_key_id=credential.key_id,
         shared_secret=decrypt_secret(credential.encrypted_secret),
+        body=body,
     )
     return BootstrapAuthContext(monitor_id=monitor_id, key_id=credential.key_id)
 

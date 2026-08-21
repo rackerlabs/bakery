@@ -716,13 +716,33 @@ class RackspaceCoreMixer(BaseMixer):
                 "error": "attributes dict required for update",
             }
 
-        query_set = [
-            {
-                "class": "Ticket.Ticket",
-                "load_arg": str(ticket_number),
-                "set_attribute": attributes,
+        status_value = attributes.get("status")
+        other_attributes = {k: v for k, v in attributes.items() if k != "status"}
+
+        query_set: List[Dict[str, Any]] = []
+        if status_value is not None:
+            query_set.append(
+                {
+                    "class": "Ticket.Ticket",
+                    "load_arg": str(ticket_number),
+                    "method": "setStatusByName",
+                    "args": [self._normalize_status_name(status_value)],
+                    "keyword_args": {},
+                }
+            )
+        if other_attributes:
+            query_set.append(
+                {
+                    "class": "Ticket.Ticket",
+                    "load_arg": str(ticket_number),
+                    "set_attribute": other_attributes,
+                }
+            )
+        if not query_set:
+            return {
+                "success": False,
+                "error": "no updatable attributes provided",
             }
-        ]
 
         result = await self._execute_query(query_set)
         device_attachment = await self._attach_device_if_available(

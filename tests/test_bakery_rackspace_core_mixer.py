@@ -362,6 +362,59 @@ async def test_close_ticket_falls_back_to_set_attribute_on_http_error(
 
 
 @pytest.mark.asyncio
+async def test_update_ticket_status_uses_set_status_by_name(monkeypatch: pytest.MonkeyPatch):
+    mixer = RackspaceCoreMixer()
+    calls: list[list[dict[str, object]]] = []
+
+    async def _fake_execute(query_set: list[dict[str, object]]):
+        calls.append(query_set)
+        return [{"result": {"ok": True}}]
+
+    monkeypatch.setattr(mixer, "_execute_query", _fake_execute)
+
+    result = await mixer._update_ticket(
+        {
+            "ticket_id": "260821-02542",
+            "attributes": {"status": "Feedback Received"},
+        }
+    )
+
+    assert result["success"] is True
+    assert len(calls) == 1
+    assert calls[0][0]["method"] == "setStatusByName"
+    assert calls[0][0]["args"] == ["Feedback Received"]
+    assert calls[0][0]["load_arg"] == "260821-02542"
+
+
+@pytest.mark.asyncio
+async def test_update_ticket_batches_status_and_other_attributes(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    mixer = RackspaceCoreMixer()
+    calls: list[list[dict[str, object]]] = []
+
+    async def _fake_execute(query_set: list[dict[str, object]]):
+        calls.append(query_set)
+        return [{"result": {"ok": True}}]
+
+    monkeypatch.setattr(mixer, "_execute_query", _fake_execute)
+
+    result = await mixer._update_ticket(
+        {
+            "ticket_id": "260821-02542",
+            "attributes": {"status": "Feedback Received", "severity": "Urgent"},
+        }
+    )
+
+    assert result["success"] is True
+    assert len(calls) == 1
+    methods = [q.get("method") for q in calls[0]]
+    assert methods == ["setStatusByName", None]
+    assert calls[0][0]["args"] == ["Feedback Received"]
+    assert calls[0][1]["set_attribute"] == {"severity": "Urgent"}
+
+
+@pytest.mark.asyncio
 async def test_add_comment_uses_add_message_with_numeric_source_id(
     monkeypatch: pytest.MonkeyPatch,
 ):

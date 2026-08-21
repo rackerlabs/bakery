@@ -133,12 +133,18 @@ def _build_provider_payload(
                 or "PoundCake communication update.",
             )
             return provider_payload
+        context_attributes = (
+            context.get("attributes") if isinstance(context.get("attributes"), dict) else {}
+        )
         updates = provider_payload.get("updates")
-        if not updates:
+        if not isinstance(updates, dict):
             updates = {}
             for field in ("title", "description", "severity", "category", "state"):
                 if payload.get(field) is not None:
                     updates[field] = payload.get(field)
+            for key, value in context_attributes.items():
+                if value is not None:
+                    updates[key] = value
             if updates:
                 provider_payload["updates"] = updates
         if provider == "rackspace_core" and updates:
@@ -337,6 +343,26 @@ def _load_ticket(db, internal_ticket_id: str) -> Ticket:
     return ticket
 
 
+def _updated_ticket_state(operation: TicketOperation, result: dict[str, Any]) -> str | None:
+    normalized = operation.normalized_payload or {}
+    attributes = (
+        normalized.get("attributes") if isinstance(normalized.get("attributes"), dict) else {}
+    )
+    status_value = _first_non_empty(
+        result.get("status"),
+        attributes.get("status"),
+        normalized.get("status"),
+    )
+    if status_value is None:
+        return None
+    normalized_state = str(status_value).strip().lower().replace(" ", "_")
+    if not normalized_state:
+        return None
+    if normalized_state in {"confirm_solved", "confirmed_solved"}:
+        return "confirmed_solved"
+    return normalized_state
+
+
 def _persist_success(db, operation_id: str, result: dict[str, Any]) -> None:
     now = _now()
     operation = (
@@ -376,7 +402,8 @@ def _persist_success(db, operation_id: str, result: dict[str, Any]) -> None:
         else:
             ticket.state = "closed"
     elif operation.action == "update":
-        ticket.state = "updating"
+        updated_state = _updated_ticket_state(operation, result)
+        ticket.state = updated_state or "updating"
     elif operation.action == "comment":
         ticket.state = "open"
     ticket.latest_error = None

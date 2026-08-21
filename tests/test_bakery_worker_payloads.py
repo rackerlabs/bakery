@@ -13,7 +13,7 @@ if "structlog" not in sys.modules:
     )
 
 from bakery.models import Ticket
-from bakery.worker import _build_provider_payload
+from bakery.worker import _build_provider_payload, _preflight_missing_fields
 
 
 def _canonical_payload() -> dict:
@@ -154,3 +154,56 @@ def test_build_provider_payload_discord_comment_uses_compact_rendered_payload() 
     assert "Remediation" in field_names
     assert "Failure excerpt" in field_names
     assert "secret-token" not in rendered["embeds"][0]["fields"][-1]["value"]
+
+
+def test_build_provider_payload_rackspace_core_update_promotes_context_status() -> None:
+    ticket = Ticket(
+        internal_ticket_id="comm-3",
+        provider_type="rackspace_core",
+        provider_ticket_id="260821-02542",
+        state="confirmed_solved",
+    )
+    payload = {
+        "title": None,
+        "description": None,
+        "severity": None,
+        "category": None,
+        "state": None,
+        "context": {
+            "attributes": {"status": "Feedback Received"},
+            "provider_config": {"account_number": "1781738"},
+            "source": "poundcake_system",
+        },
+    }
+
+    rendered = _build_provider_payload("update", ticket, payload)
+
+    assert rendered["ticket_id"] == "260821-02542"
+    assert rendered["account_number"] == "1781738"
+    assert rendered["attributes"] == {"status": "Feedback Received"}
+    assert rendered["updates"] == {"status": "Feedback Received"}
+
+
+def test_preflight_rackspace_core_update_accepts_status_transition() -> None:
+    ticket = Ticket(
+        internal_ticket_id="comm-4",
+        provider_type="rackspace_core",
+        provider_ticket_id="260821-02542",
+        state="confirmed_solved",
+    )
+    payload = {
+        "title": None,
+        "description": None,
+        "severity": None,
+        "category": None,
+        "state": None,
+        "context": {
+            "attributes": {"status": "Feedback Received"},
+            "provider_config": {"account_number": "1781738"},
+            "source": "poundcake_system",
+        },
+    }
+
+    rendered = _build_provider_payload("update", ticket, payload)
+
+    assert _preflight_missing_fields("rackspace_core", "update", rendered) == []

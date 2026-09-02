@@ -25,7 +25,7 @@ dependencies = [
     "greenlet==3.2.4",
     "alembic==1.18.3",
     "pymysql==1.1.2",
-    "cryptography==46.0.4",
+    "cryptography==50.0.0",
     "pydantic==2.12.5",
     "httpx==0.28.1",
     "python-jose[cryptography]==3.5.0",

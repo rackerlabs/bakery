@@ -293,10 +293,50 @@ def _split_text_with_urls(text: str) -> list[tuple[str, bool]]:
     return [(segment, is_url) for segment, is_url in parts if segment]
 
 
+def _build_affected_paths(canonical: dict[str, Any]) -> list[str]:
+    """Extracts and formats all correlated per-path details from child alerts."""
+    children = canonical.get("children") if isinstance(canonical.get("children"), list) else []
+    lines: list[str] = []
+    for child in children:
+        if not isinstance(child, dict):
+            continue
+        child_annotations = (
+            child.get("annotations") if isinstance(child.get("annotations"), dict) else {}
+        )
+        child_labels = child.get("labels") if isinstance(child.get("labels"), dict) else {}
+
+        summary_text = (
+            child.get("summary")
+            or child_annotations.get("summary")
+            or child.get("description")
+            or child_annotations.get("description")
+        )
+
+        if not summary_text and child_labels:
+            relevant_kvs = [
+                f"{k}={child_labels[k]}"
+                for k in ("instance", "interface_ip", "dm_dev", "multipath_id", "volume_id")
+                if child_labels.get(k)
+            ]
+            if relevant_kvs:
+                summary_text = " ".join(relevant_kvs)
+
+        summary = _sanitize_line(summary_text, 300)
+        if summary:
+            lines.append(summary)
+    return lines
+
+
 def _build_fallback_canonical(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
     labels = context.get("labels") if isinstance(context.get("labels"), dict) else {}
+    if not labels and isinstance(payload.get("labels"), dict):
+        labels = payload["labels"]
+
     annotations = context.get("annotations") if isinstance(context.get("annotations"), dict) else {}
+    if not annotations and isinstance(payload.get("annotations"), dict):
+        annotations = payload["annotations"]
+
     route_label = _text(context.get("route_label"))
     links: list[dict[str, str]] = []
     generator_url = _text(context.get("generatorURL") or payload.get("generatorURL"))
@@ -314,6 +354,19 @@ def _build_fallback_canonical(action: str, payload: dict[str, Any]) -> dict[str,
             links.append({"label": label, "url": url})
 
     device = _device_from_labels(labels)
+
+    # Correlated child alerts from Poundcake Order metadata
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+    context_metadata = context.get("metadata") if isinstance(context.get("metadata"), dict) else {}
+    children = (
+        payload.get("children")
+        or context.get("children")
+        or metadata.get("children")
+        or context_metadata.get("children")
+        or []
+    )
+    if not isinstance(children, list):
+        children = []
 
     return {
         "schema_version": 1,
@@ -335,9 +388,11 @@ def _build_fallback_canonical(action: str, payload: dict[str, Any]) -> dict[str,
             ),
         },
         "order": {
-            "id": context.get("order_id"),
-            "req_id": _text(context.get("req_id")),
-            "processing_status": _text(context.get("processing_status")),
+            "id": context.get("order_id") or payload.get("id") or payload.get("order_id"),
+            "req_id": _text(context.get("req_id") or payload.get("req_id")),
+            "processing_status": _text(
+                context.get("processing_status") or payload.get("processing_status")
+            ),
             "alert_status": _text(context.get("alert_status")),
             "remediation_outcome": _text(context.get("remediation_outcome")),
             "counter": context.get("counter"),
@@ -345,12 +400,15 @@ def _build_fallback_canonical(action: str, payload: dict[str, Any]) -> dict[str,
             "clear_deadline_at": _text(context.get("clear_deadline_at")),
             "clear_timed_out_at": _text(context.get("clear_timed_out_at")),
             "auto_close_eligible": bool(context.get("auto_close_eligible", False)),
+            "child_count": payload.get("child_count") or len(children),
+            "expected_child_count": annotations.get("expected_child_count")
+            or payload.get("expected_child_count"),
         },
         "alert": {
             "group_name": _text(labels.get("group_name") or labels.get("alertname")),
             "severity": _text(payload.get("severity") or labels.get("severity") or "unknown"),
             "status": _text(context.get("alert_status")),
-            "fingerprint": _text(context.get("fingerprint")),
+            "fingerprint": _text(context.get("fingerprint") or payload.get("fingerprint")),
             "instance": _text(device.get("name") or labels.get("instance")),
             "starts_at": _text(context.get("starts_at")),
             "ends_at": _text(context.get("ends_at")),
@@ -359,6 +417,7 @@ def _build_fallback_canonical(action: str, payload: dict[str, Any]) -> dict[str,
             "generator_url": generator_url,
         },
         "device": device,
+        "children": children,
         "links": _dedupe_links(links),
         "text": {
             "headline": _text(
@@ -734,12 +793,22 @@ def _section_model(canonical: dict[str, Any], action: str, *, compact: bool) -> 
     _append_field(identifiers, "Order", order.get("id"), limit=64)
     _append_field(identifiers, "Request", order.get("req_id"), limit=128)
 
+    group_name = _text(alert.get("group_name") or labels.get("alertname")).lower()
+    is_multipath_root = (
+        "multipath" in group_name
+        or str(labels.get("root_cause", "")).lower() == "true"
+        or bool(order.get("expected_child_count"))
+    )
+    affected_paths = _build_affected_paths(canonical)
+
     return {
         "headline": headline,
         "title": _sanitize_line(_title_from_canonical(canonical), 255),
         "current_state": current_state,
         "problem": problem,
         "affected_scope": affected_scope,
+        "affected_paths": affected_paths,
+        "is_multipath_root": is_multipath_root,
         "operator_guidance": operator_guidance,
         "links": links,
         "identifiers": identifiers,
@@ -793,6 +862,16 @@ def _render_plain_sections(model: dict[str, Any]) -> str:
         parts.append("")
         parts.append(heading)
         parts.extend(_plain_field_line(label, value) for label, value in fields)
+
+    if model.get("affected_paths"):
+        parts.append("")
+        parts.append(f"Affected Paths ({len(model['affected_paths'])} total)")
+        parts.extend(f"  - {line}" for line in model["affected_paths"])
+    elif model.get("is_multipath_root"):
+        parts.append("")
+        parts.append("Affected Paths")
+        parts.append("  Detailed path metadata was not attached.")
+
     if remediation["summary"] or remediation["latest"] or remediation["steps"]:
         parts.append("")
         parts.append("Remediation")
@@ -830,6 +909,16 @@ def _render_markdown_sections(model: dict[str, Any]) -> str:
         parts.append("")
         parts.append(f"### {heading}")
         parts.extend(_markdown_field_line(label, value) for label, value in fields)
+
+    if model.get("affected_paths"):
+        parts.append("")
+        parts.append(f"### Affected Paths ({len(model['affected_paths'])} total)")
+        parts.extend(f"- {line}" for line in model["affected_paths"])
+    elif model.get("is_multipath_root"):
+        parts.append("")
+        parts.append("### Affected Paths")
+        parts.append("Detailed path metadata was not attached.")
+
     if remediation["summary"] or remediation["latest"] or remediation["steps"]:
         parts.append("")
         parts.append("### Remediation")
@@ -867,6 +956,16 @@ def _render_bbcode_sections(model: dict[str, Any]) -> str:
         parts.append("")
         parts.append(f"[b]{heading}[/b]")
         parts.extend(_bbcode_field_line(label, value) for label, value in fields)
+
+    if model.get("affected_paths"):
+        parts.append("")
+        parts.append(f"[b]Affected Paths ({len(model['affected_paths'])} total)[/b]")
+        parts.extend(f"  - {line}" for line in model["affected_paths"])
+    elif model.get("is_multipath_root"):
+        parts.append("")
+        parts.append("[b]Affected Paths[/b]")
+        parts.append("  Detailed path metadata was not attached.")
+
     if remediation["summary"] or remediation["latest"] or remediation["steps"]:
         parts.append("")
         parts.append("[b]Remediation[/b]")
@@ -964,6 +1063,36 @@ def _render_adf_sections(model: dict[str, Any]) -> dict[str, Any]:
             {"type": "heading", "attrs": {"level": 3}, "content": _adf_text_nodes(heading)}
         )
         content.extend(_adf_labeled_paragraph(label, value) for label, value in fields)
+
+    if model.get("affected_paths"):
+        content.append(
+            {
+                "type": "heading",
+                "attrs": {"level": 3},
+                "content": _adf_text_nodes(
+                    f"Affected Paths ({len(model['affected_paths'])} total)"
+                ),
+            }
+        )
+        content.append(
+            {
+                "type": "bulletList",
+                "content": [
+                    {"type": "listItem", "content": [_adf_paragraph(line)]}
+                    for line in model["affected_paths"]
+                ],
+            }
+        )
+    elif model.get("is_multipath_root"):
+        content.append(
+            {
+                "type": "heading",
+                "attrs": {"level": 3},
+                "content": _adf_text_nodes("Affected Paths"),
+            }
+        )
+        content.append(_adf_paragraph("Detailed path metadata was not attached."))
+
     if remediation["summary"] or remediation["latest"] or remediation["steps"]:
         content.append(
             {"type": "heading", "attrs": {"level": 3}, "content": _adf_text_nodes("Remediation")}
@@ -1037,6 +1166,27 @@ def _render_discord_message(model: dict[str, Any]) -> dict[str, Any]:
                     "inline": inline,
                 }
             )
+
+    if model.get("affected_paths"):
+        fields.append(
+            {
+                "name": f"Affected Paths ({len(model['affected_paths'])} total)",
+                "value": _truncate(
+                    "\n".join(f"- {line}" for line in model["affected_paths"]),
+                    1000,
+                ),
+                "inline": False,
+            }
+        )
+    elif model.get("is_multipath_root"):
+        fields.append(
+            {
+                "name": "Affected Paths",
+                "value": "Detailed path metadata was not attached.",
+                "inline": False,
+            }
+        )
+
     remediation_lines: list[str] = []
     if remediation["summary"]:
         remediation_lines.append(remediation["summary"])
@@ -1104,6 +1254,14 @@ def _render_discord_message(model: dict[str, Any]) -> dict[str, Any]:
             }
         ],
     }
+
+
+def format_multipath_ticket(provider: str, action: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    Dedicated convenience formatter for multipath aggregated orders.
+    Delegates directly to render_provider_content which processes canonical child paths.
+    """
+    return render_provider_content(provider, action, payload)
 
 
 def render_provider_content(provider: str, action: str, payload: dict[str, Any]) -> dict[str, Any]:
